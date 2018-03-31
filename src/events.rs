@@ -1,5 +1,5 @@
 use error::{ErrorKind, Result};
-use ethabi::{Address, Log, RawTopicFilter, Token, Topic, Uint};
+use ethabi::{Address, FixedBytes, Log, RawTopicFilter, Token, Topic, Uint};
 use util::LogExt;
 
 /// An event that is logged when the current set of validators has changed.
@@ -19,6 +19,32 @@ impl ChangeFinalized {
                 new_set: tokens.into_iter().filter_map(Token::to_address).collect(),
             })
             .ok_or_else(|| ErrorKind::UnexpectedLogParams.into())
+    }
+}
+
+#[derive(Debug)]
+pub struct InitiateChange {
+    /// The previous voter set's hash.
+    parent_hash: FixedBytes,
+    /// The new set of validators.
+    pub new_set: Vec<Address>,
+}
+
+impl InitiateChange {
+    /// Parses the log and returns a `InitiateChange`, if the log corresponded to such an event.
+    pub fn from_log(log: &Log) -> Result<InitiateChange> {
+        match (
+            log.param(0, "parentHash")
+                .cloned()
+                .and_then(Token::to_fixed_bytes),
+            log.param(1, "newSet").cloned().and_then(Token::to_array),
+        ) {
+            (Some(parent_hash), Some(tokens)) => Ok(InitiateChange {
+                parent_hash,
+                new_set: tokens.into_iter().filter_map(Token::to_address).collect(),
+            }),
+            _ => Err(ErrorKind::UnexpectedLogParams.into()),
+        }
     }
 }
 

@@ -13,7 +13,7 @@ mod util;
 mod validator;
 
 use error::{Error, ErrorKind};
-use events::{BallotCreated, ChangeFinalized, Vote};
+use events::{BallotCreated, ChangeFinalized, InitiateChange, Vote};
 use stats::Stats;
 use std::fs::File;
 use util::{ContractExt, TopicFilterExt, Web3LogExt};
@@ -33,24 +33,33 @@ fn count_votes(
     voting_abi: &File,
     net_con_abi: &File,
     val_meta_abi: &File,
+    key_mgr_abi: &File,
 ) -> Result<Stats, Error> {
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
     let voting_contract = ethabi::Contract::load(voting_abi)?;
     let net_con_contract = ethabi::Contract::load(net_con_abi)?;
     let val_meta_contract = ethabi::Contract::load(val_meta_abi)?;
+    let key_mgr_contract = ethabi::Contract::load(key_mgr_abi)?;
 
     // TODO: Read contract addresses from chain spec.
     let val_meta_addr = util::parse_address("0xfb9c7fC2a00DfFc53948e3bbeb11F3D4b56C31B8").unwrap();
     let web3_val_meta = web3::contract::Contract::new(web3.eth(), val_meta_addr, val_meta_contract);
+    let key_mgr_addr = util::parse_address("0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf").unwrap();
+    let web3_key_mgr = web3::contract::Contract::new(web3.eth(), key_mgr_addr, key_mgr_contract);
 
     let ballot_event = voting_contract.event("BallotCreated")?;
     let vote_event = voting_contract.event("Vote")?;
     let change_event = net_con_contract.event("ChangeFinalized")?;
+    let init_change_event = net_con_contract.event("InitiateChange")?;
 
     // Find all ballots and voter changes.
     let ballot_or_change_filter = ethabi::TopicFilter {
-        topic0: ethabi::Topic::OneOf(vec![ballot_event.signature(), change_event.signature()]),
+        topic0: ethabi::Topic::OneOf(vec![
+            ballot_event.signature(),
+            change_event.signature(),
+            init_change_event.signature(),
+        ]),
         ..ethabi::TopicFilter::default()
     }.to_filter_builder()
         .build();
@@ -61,6 +70,7 @@ fn count_votes(
     // FIXME: Find out why we see no `ChangeFinalized` events, and how to obtain the initial voters.
     let mut voters: Vec<ethabi::Address> = Vec::new();
     let mut stats = Stats::default();
+    let mut prev_init_change: Option<InitiateChange> = None;
 
     // Iterate over all ballot and voter change events.
     for log in ballot_change_logs_filter.logs().wait()? {
@@ -71,6 +81,22 @@ fn count_votes(
                 println!("{:?}", change);
             }
             voters = change.new_set;
+        } else if let Ok(init_change_log) = init_change_event.parse_log(log.clone().into_raw()) {
+            // If it is an `InitiateChange`, update the current set of voters.
+            let init_change = InitiateChange::from_log(&init_change_log)?;
+            if verbose {
+                println!("{:?}", init_change);
+            }
+            if let Some(prev) = prev_init_change.take() {
+                voters = vec![];
+                for mining_key in prev.new_set {
+                    let voter = web3_key_mgr.simple_query("getVotingByMining", mining_key)?;
+                    if voter != ethabi::Address::zero() {
+                        voters.push(voter);
+                    }
+                }
+            }
+            prev_init_change = Some(init_change);
         } else if let Ok(ballot_log) = ballot_event.parse_log(log.into_raw()) {
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
             let ballot = BallotCreated::from_log(&ballot_log)?;
@@ -110,10 +136,17 @@ fn main() {
     let matches = cli::get_matches();
     let url = matches.value_of("url").unwrap_or("http://127.0.0.1:8545");
     let verbose = matches.is_present("verbose");
-    let voting_abi = File::open("abi/VotingToChangeKeys.json").expect("read voting abi");
-    let net_con_abi = File::open("abi/PoaNetworkConsensus.json").expect("read consensus abi");
-    let val_meta_abi = File::open("abi/ValidatorMetadata.json").expect("read val meta abi");
-    let stats =
-        count_votes(url, verbose, &voting_abi, &net_con_abi, &val_meta_abi).expect("count votes");
+    let voting_abi = File::open("abi/VotingToChangeKeys.abi.json").expect("read voting abi");
+    let net_con_abi = File::open("abi/PoaNetworkConsensus.abi.json").expect("read consensus abi");
+    let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
+    let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
+    let stats = count_votes(
+        url,
+        verbose,
+        &voting_abi,
+        &net_con_abi,
+        &val_meta_abi,
+        &key_mgr_abi,
+    ).expect("count votes");
     println!("{}", stats);
 }
