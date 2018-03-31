@@ -51,7 +51,7 @@ impl Default for ContractAddresses {
 fn count_votes(
     url: &str,
     verbose: bool,
-    contract_addrs: ContractAddresses,
+    contract_addrs: &ContractAddresses,
 ) -> Result<Stats, Error> {
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
@@ -135,7 +135,9 @@ fn count_votes(
             for vote_log in vote_logs_filter.logs().wait()? {
                 let vote = Vote::from_log(&vote_event.parse_log(vote_log.into_raw())?)?;
                 if !voters.contains(&vote.voter) {
-                    eprintln!("Unexpected voter {} for ballot {}", vote.voter, ballot.id);
+                    if verbose {
+                        eprintln!("Unexpected voter {} for ballot {}", vote.voter, ballot.id);
+                    }
                     voters.push(vote.voter);
                 }
                 votes.push(vote);
@@ -166,6 +168,6 @@ fn main() {
             serde_json::from_reader(file).expect("parse contracts file")
         })
         .unwrap_or_default();
-    let stats = count_votes(url, verbose, contract_addrs).expect("count votes");
+    let stats = count_votes(url, verbose, &contract_addrs).expect("count votes");
     println!("{}", stats);
 }
