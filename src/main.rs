@@ -3,6 +3,10 @@ extern crate colored;
 #[macro_use]
 extern crate error_chain;
 extern crate ethabi;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 extern crate web3;
 
 mod cli;
@@ -15,6 +19,7 @@ mod validator;
 use error::{Error, ErrorKind};
 use events::{BallotCreated, ChangeFinalized, InitiateChange, Vote};
 use stats::Stats;
+use std::default::Default;
 use std::fs::File;
 use util::{ContractExt, TopicFilterExt, Web3LogExt};
 use web3::futures::Future;
@@ -26,26 +31,44 @@ use web3::futures::Future;
 //     struct _Dummy;
 // }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+struct ContractAddresses {
+    metadata_address: String,
+    keys_manager_address: String,
+}
+
+impl Default for ContractAddresses {
+    fn default() -> ContractAddresses {
+        ContractAddresses {
+            metadata_address: "0xfb9c7fC2a00DfFc53948e3bbeb11F3D4b56C31B8".to_string(),
+            keys_manager_address: "0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf".to_string(),
+        }
+    }
+}
+
 /// Finds all logged ballots and returns statistics about how many were missed by each voter.
 fn count_votes(
     url: &str,
     verbose: bool,
-    voting_abi: &File,
-    net_con_abi: &File,
-    val_meta_abi: &File,
-    key_mgr_abi: &File,
+    contract_addrs: ContractAddresses,
 ) -> Result<Stats, Error> {
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
+
+    let voting_abi = File::open("abi/VotingToChangeKeys.abi.json").expect("read voting abi");
+    let net_con_abi = File::open("abi/PoaNetworkConsensus.abi.json").expect("read consensus abi");
+    let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
+    let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
+
     let voting_contract = ethabi::Contract::load(voting_abi)?;
     let net_con_contract = ethabi::Contract::load(net_con_abi)?;
     let val_meta_contract = ethabi::Contract::load(val_meta_abi)?;
     let key_mgr_contract = ethabi::Contract::load(key_mgr_abi)?;
 
-    // TODO: Read contract addresses from chain spec.
-    let val_meta_addr = util::parse_address("0xfb9c7fC2a00DfFc53948e3bbeb11F3D4b56C31B8").unwrap();
+    let val_meta_addr = util::parse_address(&contract_addrs.metadata_address).unwrap();
     let web3_val_meta = web3::contract::Contract::new(web3.eth(), val_meta_addr, val_meta_contract);
-    let key_mgr_addr = util::parse_address("0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf").unwrap();
+    let key_mgr_addr = util::parse_address(&contract_addrs.keys_manager_address).unwrap();
     let web3_key_mgr = web3::contract::Contract::new(web3.eth(), key_mgr_addr, key_mgr_contract);
 
     let ballot_event = voting_contract.event("BallotCreated")?;
@@ -136,17 +159,13 @@ fn main() {
     let matches = cli::get_matches();
     let url = matches.value_of("url").unwrap_or("http://127.0.0.1:8545");
     let verbose = matches.is_present("verbose");
-    let voting_abi = File::open("abi/VotingToChangeKeys.abi.json").expect("read voting abi");
-    let net_con_abi = File::open("abi/PoaNetworkConsensus.abi.json").expect("read consensus abi");
-    let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
-    let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
-    let stats = count_votes(
-        url,
-        verbose,
-        &voting_abi,
-        &net_con_abi,
-        &val_meta_abi,
-        &key_mgr_abi,
-    ).expect("count votes");
+    let contract_addrs = matches
+        .value_of("contracts")
+        .map(|filename| {
+            let file = File::open(filename).expect("open contracts file");
+            serde_json::from_reader(file).expect("parse contracts file")
+        })
+        .unwrap_or_default();
+    let stats = count_votes(url, verbose, contract_addrs).expect("count votes");
     println!("{}", stats);
 }

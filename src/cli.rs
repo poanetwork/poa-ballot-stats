@@ -23,5 +23,12 @@ pub fn get_matches() -> ArgMatches<'static> {
                 .help("More detailed output")
                 .takes_value(false),
         )
+        .arg(
+            Arg::with_name("contracts")
+                .short("c")
+                .long("contracts")
+                .help("JSON file with the contract addresses")
+                .takes_value(true),
+        )
         .get_matches()
 }
