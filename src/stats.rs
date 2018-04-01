@@ -63,6 +63,8 @@ impl Display for Stats {
             .iter()
             .map(|(addr, s)| DisplayLine {
                 votes_per_thousand: s.voted * 1000 / s.ballots,
+                voted: s.voted,
+                ballots: s.ballots,
                 voting_address: *addr,
                 mining_key: match s.mining_key {
                     None => "".to_string(),
@@ -75,7 +77,8 @@ impl Display for Stats {
             })
             .collect();
         lines.sort();
-        writeln!(f, "{}", "Missed  Voting key   Mining key   Name".bold())?;
+        let header = "        Missed  Voting key   Mining key   Name".bold();
+        writeln!(f, "{}", header)?;
         for line in lines {
             line.fmt(f)?;
         }
@@ -87,6 +90,8 @@ impl Display for Stats {
 #[derive(Ord, PartialOrd, Eq, PartialEq)]
 struct DisplayLine {
     votes_per_thousand: usize,
+    voted: usize,
+    ballots: usize,
     voting_address: Address,
     mining_key: String,
     name: String,
@@ -95,7 +100,8 @@ struct DisplayLine {
 impl Display for DisplayLine {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let text = format!(
-            "{:5.1}%  {}  {}  {}",
+            "{:>7}, {:4.1}%  {}  {}  {}",
+            format!("{}/{}", self.ballots - self.voted, self.ballots),
             100.0 - (self.votes_per_thousand as f32) / 10.0,
             self.voting_address,
             self.mining_key,
