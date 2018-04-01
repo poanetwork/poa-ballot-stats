@@ -68,6 +68,7 @@ impl TopicFilterExt for ethabi::TopicFilter {
                 to_topic(self.topic3),
             )
             .from_block(web3::types::BlockNumber::Earliest)
+            .to_block(web3::types::BlockNumber::Latest)
     }
 }
 
