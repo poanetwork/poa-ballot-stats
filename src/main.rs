@@ -41,7 +41,7 @@ struct ContractAddresses {
 impl Default for ContractAddresses {
     fn default() -> ContractAddresses {
         ContractAddresses {
-            metadata_address: "0xfb9c7fC2a00DfFc53948e3bbeb11F3D4b56C31B8".to_string(),
+            metadata_address: "0x4c0eb450d8dfa6e89eb14ac154867bc86b3c559c".to_string(),
             keys_manager_address: "0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf".to_string(),
         }
     }
