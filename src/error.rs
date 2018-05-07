@@ -12,5 +12,9 @@ error_chain! {
         UnexpectedLogParams {
             description("Unexpected parameter types in log"),
         }
+        NoEventsFound {
+            description("No events found. \
+                         Make sure your node is running in 'full' mode, not 'light'."),
+        }
     }
 }

@@ -38,15 +38,6 @@ struct ContractAddresses {
     keys_manager_address: String,
 }
 
-impl Default for ContractAddresses {
-    fn default() -> ContractAddresses {
-        ContractAddresses {
-            metadata_address: "0x4c0eb450d8dfa6e89eb14ac154867bc86b3c559c".to_string(),
-            keys_manager_address: "0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf".to_string(),
-        }
-    }
-}
-
 /// Finds all logged ballots and returns statistics about how many were missed by each voter.
 fn count_votes(
     url: &str,
@@ -95,20 +86,26 @@ fn count_votes(
     let mut stats = Stats::default();
     let mut prev_init_change: Option<InitiateChange> = None;
 
+    if verbose {
+        println!("Collecting events…");
+    }
+    let mut event_found = false;
+
     // Iterate over all ballot and voter change events.
     for log in ballot_change_logs_filter.logs().wait()? {
+        event_found = true;
         if let Ok(change_log) = change_event.parse_log(log.clone().into_raw()) {
             // If it is a `ChangeFinalized`, update the current set of voters.
             let change = ChangeFinalized::from_log(&change_log)?;
             if verbose {
-                println!("{:?}", change);
+                println!("• {}", change);
             }
             voters = change.new_set;
         } else if let Ok(init_change_log) = init_change_event.parse_log(log.clone().into_raw()) {
             // If it is an `InitiateChange`, update the current set of voters.
             let init_change = InitiateChange::from_log(&init_change_log)?;
             if verbose {
-                println!("{:?}", init_change);
+                println!("• {}", init_change);
             }
             if let Some(prev) = prev_init_change.take() {
                 voters = vec![];
@@ -124,33 +121,51 @@ fn count_votes(
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
             let ballot = BallotCreated::from_log(&ballot_log)?;
             if verbose {
-                println!("{:?}", ballot);
+                println!("• {}", ballot);
             }
             let vote_filter = vote_event
                 .create_filter(ballot.vote_topic_filter())?
                 .to_filter_builder()
                 .build();
             let vote_logs_filter = web3.eth_filter().create_logs_filter(vote_filter).wait()?;
-            let mut votes: Vec<Vote> = Vec::new();
-            for vote_log in vote_logs_filter.logs().wait()? {
-                let vote = Vote::from_log(&vote_event.parse_log(vote_log.into_raw())?)?;
-                if !voters.contains(&vote.voter) {
-                    if verbose {
-                        eprintln!("Unexpected voter {} for ballot {}", vote.voter, ballot.id);
+            let votes = vote_logs_filter
+                .logs()
+                .wait()?
+                .into_iter()
+                .map(|vote_log| {
+                    let vote = Vote::from_log(&vote_event.parse_log(vote_log.into_raw())?)?;
+                    if !voters.contains(&vote.voter) {
+                        if verbose {
+                            eprintln!("  Unexpected voter {}", vote.voter);
+                        }
+                        voters.push(vote.voter);
                     }
-                    voters.push(vote.voter);
-                }
-                votes.push(vote);
-            }
+                    Ok(vote)
+                })
+                .collect::<Result<Vec<Vote>, Error>>()?;
             stats.add_ballot(&voters, &votes);
         } else {
             return Err(ErrorKind::UnexpectedLogParams.into());
         }
     }
 
+    if !event_found {
+        return Err(ErrorKind::NoEventsFound.into());
+    }
+
+    if verbose {
+        println!(""); // Add a new line between event log and table.
+    }
+
     // Finally, gather the metadata for all voters.
     for voter in voters {
-        let mining_key = web3_val_meta.simple_query("getMiningByVotingKey", voter)?;
+        let mining_key = match web3_val_meta.simple_query("getMiningByVotingKey", voter) {
+            Ok(key) => key,
+            Err(err) => {
+                eprintln!("Could not fetch mining key for {:?}: {:?}", voter, err);
+                continue;
+            }
+        };
         let validator = web3_val_meta.simple_query("validators", mining_key)?;
         stats.set_metadata(&voter, mining_key, validator);
     }
@@ -161,13 +176,11 @@ fn main() {
     let matches = cli::get_matches();
     let url = matches.value_of("url").unwrap_or("http://127.0.0.1:8545");
     let verbose = matches.is_present("verbose");
-    let contract_addrs = matches
+    let contract_file = matches
         .value_of("contracts")
-        .map(|filename| {
-            let file = File::open(filename).expect("open contracts file");
-            serde_json::from_reader(file).expect("parse contracts file")
-        })
-        .unwrap_or_default();
+        .unwrap_or("contracts/core.json");
+    let file = File::open(contract_file).expect("open contracts file");
+    let contract_addrs = serde_json::from_reader(file).expect("parse contracts file");
     let stats = count_votes(url, verbose, &contract_addrs).expect("count votes");
     println!("{}", stats);
 }

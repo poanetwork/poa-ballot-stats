@@ -1,6 +1,7 @@
 use error::{ErrorKind, Result};
 use ethabi::{Address, FixedBytes, Log, RawTopicFilter, Token, Topic, Uint};
-use util::LogExt;
+use std::fmt;
+use util::{HexBytes, LogExt};
 
 /// An event that is logged when the current set of validators has changed.
 #[derive(Debug)]
@@ -19,6 +20,19 @@ impl ChangeFinalized {
                 new_set: tokens.into_iter().filter_map(Token::to_address).collect(),
             })
             .ok_or_else(|| ErrorKind::UnexpectedLogParams.into())
+    }
+}
+
+impl fmt::Display for ChangeFinalized {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ChangeFinalized {{ new_set: [",)?;
+        for (i, voter) in self.new_set.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", voter)?;
+        }
+        write!(f, "] }}")
     }
 }
 
@@ -45,6 +59,23 @@ impl InitiateChange {
             }),
             _ => Err(ErrorKind::UnexpectedLogParams.into()),
         }
+    }
+}
+
+impl fmt::Display for InitiateChange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "InitiateChange {{ parent_hash: {}, new_set: [",
+            HexBytes(&self.parent_hash)
+        )?;
+        for (i, voter) in self.new_set.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", voter)?;
+        }
+        write!(f, "] }}")
     }
 }
 
@@ -82,6 +113,16 @@ impl BallotCreated {
             topic0: Topic::This(Token::Uint(self.id)),
             ..RawTopicFilter::default()
         }
+    }
+}
+
+impl fmt::Display for BallotCreated {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "BallotCreated {{ id: {}, ballot_type: {}, creator: {} }}",
+            self.id, self.ballot_type, self.creator,
+        )
     }
 }
 

@@ -1,5 +1,5 @@
 use ethabi;
-use std::u8;
+use std::{fmt, u8};
 use web3;
 use web3::futures::Future;
 
@@ -127,5 +127,22 @@ impl LogExt for ethabi::Log {
             Some(&ethabi::Token::Uint(ref i)) => Some(i),
             _ => None,
         }
+    }
+}
+
+/// Wrapper for a byte array, whose `Display` implementation outputs shortened hexadecimal strings.
+pub struct HexBytes<'a>(pub &'a [u8]);
+
+impl<'a> fmt::Display for HexBytes<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "0x")?;
+        for i in &self.0[..2] {
+            write!(f, "{:02x}", i)?;
+        }
+        write!(f, "…")?;
+        for i in &self.0[(self.0.len() - 2)..] {
+            write!(f, "{:02x}", i)?;
+        }
+        Ok(())
     }
 }
