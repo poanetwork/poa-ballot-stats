@@ -128,9 +128,8 @@ fn count_votes(
                 .to_filter_builder()
                 .build();
             let vote_logs_filter = web3.eth_filter().create_logs_filter(vote_filter).wait()?;
-            let votes = vote_logs_filter
-                .logs()
-                .wait()?
+            let vote_logs = vote_logs_filter.logs().wait()?;
+            let votes = vote_logs
                 .into_iter()
                 .map(|vote_log| {
                     let vote = Vote::from_log(&vote_event.parse_log(vote_log.into_raw())?)?;
