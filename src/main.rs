@@ -3,6 +3,10 @@ extern crate colored;
 #[macro_use]
 extern crate error_chain;
 extern crate ethabi;
+#[macro_use]
+extern crate ethabi_derive;
+#[macro_use]
+extern crate ethabi_contract;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -17,19 +21,23 @@ mod util;
 mod validator;
 
 use error::{Error, ErrorKind};
-use events::{BallotCreated, ChangeFinalized, InitiateChange, Vote};
+use events::{BallotCreated, Vote};
 use stats::Stats;
 use std::default::Default;
 use std::fs::File;
-use util::{ContractExt, TopicFilterExt, Web3LogExt};
+use util::{ContractExt, HexBytes, HexList, TopicFilterExt, Web3LogExt};
 use web3::futures::Future;
 
-// TODO: `ethabi_derive` produces unparseable tokens.
-// mod voting_to_change_keys {
-//     #[derive(EthabiContract)]
-//     #[ethabi_contract_options(name = "VotingToChangeKeys", path = "abi/VotingToChangeKeys.json")]
-//     struct _Dummy;
-// }
+use_contract!(
+    net_con,
+    "NetworkConsensus",
+    "abi/PoaNetworkConsensus.abi.json"
+);
+// use_contract!(
+//     voting,
+//     "VotingToChangeKeys",
+//     "abi/VotingToChangeKeys.abi.json"
+// );
 
 #[derive(Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -48,12 +56,11 @@ fn count_votes(
     let web3 = web3::Web3::new(transport);
 
     let voting_abi = File::open("abi/VotingToChangeKeys.abi.json").expect("read voting abi");
-    let net_con_abi = File::open("abi/PoaNetworkConsensus.abi.json").expect("read consensus abi");
     let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
     let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
 
     let voting_contract = ethabi::Contract::load(voting_abi)?;
-    let net_con_contract = ethabi::Contract::load(net_con_abi)?;
+    let net_con_contract = net_con::NetworkConsensus::default();
     let val_meta_contract = ethabi::Contract::load(val_meta_abi)?;
     let key_mgr_contract = ethabi::Contract::load(key_mgr_abi)?;
 
@@ -64,18 +71,16 @@ fn count_votes(
 
     let ballot_event = voting_contract.event("BallotCreated")?;
     let vote_event = voting_contract.event("Vote")?;
-    let change_event = net_con_contract.event("ChangeFinalized")?;
-    let init_change_event = net_con_contract.event("InitiateChange")?;
+    let change_event = net_con_contract.events().change_finalized();
+    let init_change_event = net_con_contract.events().initiate_change();
 
     // Find all ballots and voter changes.
-    let ballot_or_change_filter = ethabi::TopicFilter {
-        topic0: ethabi::Topic::OneOf(vec![
-            ballot_event.signature(),
-            change_event.signature(),
-            init_change_event.signature(),
-        ]),
-        ..ethabi::TopicFilter::default()
-    }.to_filter_builder()
+    let ballot_or_change_filter = ballot_event
+        .create_filter(ethabi::RawTopicFilter::default())
+        .expect("create ballot event filter")
+        .or(change_event.create_filter())
+        .or(init_change_event.create_filter(ethabi::Topic::Any))
+        .to_filter_builder()
         .build();
     let ballot_change_logs_filter = web3.eth_filter()
         .create_logs_filter(ballot_or_change_filter)
@@ -84,7 +89,7 @@ fn count_votes(
     // FIXME: Find out why we see no `ChangeFinalized` events, and how to obtain the initial voters.
     let mut voters: Vec<ethabi::Address> = Vec::new();
     let mut stats = Stats::default();
-    let mut prev_init_change: Option<InitiateChange> = None;
+    let mut prev_init_change: Option<net_con::logs::InitiateChange> = None;
 
     if verbose {
         println!("Collecting events…");
@@ -94,18 +99,23 @@ fn count_votes(
     // Iterate over all ballot and voter change events.
     for log in ballot_change_logs_filter.logs().wait()? {
         event_found = true;
-        if let Ok(change_log) = change_event.parse_log(log.clone().into_raw()) {
+        if let Ok(change) = change_event.parse_log(log.clone().into_raw()) {
             // If it is a `ChangeFinalized`, update the current set of voters.
-            let change = ChangeFinalized::from_log(&change_log)?;
             if verbose {
-                println!("• {}", change);
+                println!(
+                    "• ChangeFinalized {{ new_set: {} }}",
+                    HexList(&change.new_set)
+                );
             }
             voters = change.new_set;
-        } else if let Ok(init_change_log) = init_change_event.parse_log(log.clone().into_raw()) {
+        } else if let Ok(init_change) = init_change_event.parse_log(log.clone().into_raw()) {
             // If it is an `InitiateChange`, update the current set of voters.
-            let init_change = InitiateChange::from_log(&init_change_log)?;
             if verbose {
-                println!("• {}", init_change);
+                println!(
+                    "• InitiateChange {{ parent_hash: {}, new_set: {} }}",
+                    HexBytes(&init_change.parent_hash),
+                    HexList(&init_change.new_set)
+                );
             }
             if let Some(prev) = prev_init_change.take() {
                 voters = vec![];

@@ -53,22 +53,72 @@ impl ContractExt for web3::contract::Contract<web3::transports::Http> {
     }
 }
 
+trait TopicExt<T> {
+    /// Returns the union of the two topics.
+    fn or(self, other: Self) -> Self;
+
+    /// Converts this topic into an `Option<Vec<T>>`, where `Any` corresponds to `None`,
+    /// `This` to a vector with one element, and `OneOf` to any vector.
+    fn to_opt_vec(self) -> Option<Vec<T>>;
+}
+
+impl<T: Ord> TopicExt<T> for ethabi::Topic<T> {
+    fn or(self, other: Self) -> Self {
+        match (self.to_opt_vec(), other.to_opt_vec()) {
+            (Some(mut v0), Some(v1)) => {
+                for e in v1 {
+                    if !v0.contains(&e) {
+                        v0.push(e);
+                    }
+                }
+                if v0.len() == 1 {
+                    ethabi::Topic::This(v0.into_iter().next().expect("has a single element; qed"))
+                } else {
+                    ethabi::Topic::OneOf(v0)
+                }
+            }
+            (_, _) => ethabi::Topic::Any,
+        }
+    }
+
+    fn to_opt_vec(self) -> Option<Vec<T>> {
+        match self {
+            ethabi::Topic::Any => None,
+            ethabi::Topic::OneOf(v) => Some(v),
+            ethabi::Topic::This(t) => Some(vec![t]),
+        }
+    }
+}
+
 pub trait TopicFilterExt {
     /// Returns a `web3::types::FilterBuilder` with these topics, starting from the first block.
     fn to_filter_builder(self) -> web3::types::FilterBuilder;
+
+    /// Returns the "disjunction" of the two filters, i.e. it filters for everything that matches
+    /// at least one of the two in every topic.
+    fn or(self, other: ethabi::TopicFilter) -> ethabi::TopicFilter;
 }
 
 impl TopicFilterExt for ethabi::TopicFilter {
     fn to_filter_builder(self) -> web3::types::FilterBuilder {
         web3::types::FilterBuilder::default()
             .topics(
-                to_topic(self.topic0),
-                to_topic(self.topic1),
-                to_topic(self.topic2),
-                to_topic(self.topic3),
+                self.topic0.to_opt_vec(),
+                self.topic1.to_opt_vec(),
+                self.topic2.to_opt_vec(),
+                self.topic3.to_opt_vec(),
             )
             .from_block(web3::types::BlockNumber::Earliest)
             .to_block(web3::types::BlockNumber::Latest)
+    }
+
+    fn or(self, other: ethabi::TopicFilter) -> ethabi::TopicFilter {
+        ethabi::TopicFilter {
+            topic0: self.topic0.or(other.topic0),
+            topic1: self.topic1.or(other.topic1),
+            topic2: self.topic2.or(other.topic2),
+            topic3: self.topic3.or(other.topic3),
+        }
     }
 }
 
@@ -79,16 +129,6 @@ pub trait Web3LogExt {
 impl Web3LogExt for web3::types::Log {
     fn into_raw(self) -> ethabi::RawLog {
         (self.topics, self.data.0).into()
-    }
-}
-
-/// Converts an `ethabi::Topic<T>` into an `Option<Vec<T>>`, where `Any` corresponds to `None`,
-/// `This` to a vector with one element, and `OneOf` to any vector.
-fn to_topic<T>(topic: ethabi::Topic<T>) -> Option<Vec<T>> {
-    match topic {
-        ethabi::Topic::Any => None,
-        ethabi::Topic::OneOf(v) => Some(v),
-        ethabi::Topic::This(t) => Some(vec![t]),
     }
 }
 
@@ -144,5 +184,25 @@ impl<'a> fmt::Display for HexBytes<'a> {
             write!(f, "{:02x}", i)?;
         }
         Ok(())
+    }
+}
+
+/// Wrapper for a list of byte arrays, whose `Display` implementation outputs shortened hexadecimal
+/// strings.
+pub struct HexList<'a, T: 'a>(pub &'a [T]);
+
+impl<'a, T: 'a> fmt::Display for HexList<'a, T>
+where
+    T: AsRef<[u8]>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, item) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", HexBytes(item.as_ref()))?;
+        }
+        write!(f, "]")
     }
 }
