@@ -15,13 +15,11 @@ extern crate web3;
 
 mod cli;
 mod error;
-mod events;
 mod stats;
 mod util;
 mod validator;
 
 use error::{Error, ErrorKind};
-use events::{BallotCreated, Vote};
 use stats::Stats;
 use std::default::Default;
 use std::fs::File;
@@ -33,11 +31,11 @@ use_contract!(
     "NetworkConsensus",
     "abi/PoaNetworkConsensus.abi.json"
 );
-// use_contract!(
-//     voting,
-//     "VotingToChangeKeys",
-//     "abi/VotingToChangeKeys.abi.json"
-// );
+use_contract!(
+    voting,
+    "VotingToChangeKeys",
+    "abi/VotingToChangeKeys.abi.json"
+);
 
 #[derive(Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -55,11 +53,10 @@ fn count_votes(
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
 
-    let voting_abi = File::open("abi/VotingToChangeKeys.abi.json").expect("read voting abi");
     let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
     let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
 
-    let voting_contract = ethabi::Contract::load(voting_abi)?;
+    let voting_contract = voting::VotingToChangeKeys::default();
     let net_con_contract = net_con::NetworkConsensus::default();
     let val_meta_contract = ethabi::Contract::load(val_meta_abi)?;
     let key_mgr_contract = ethabi::Contract::load(key_mgr_abi)?;
@@ -69,19 +66,18 @@ fn count_votes(
     let key_mgr_addr = util::parse_address(&contract_addrs.keys_manager_address).unwrap();
     let web3_key_mgr = web3::contract::Contract::new(web3.eth(), key_mgr_addr, key_mgr_contract);
 
-    let ballot_event = voting_contract.event("BallotCreated")?;
-    let vote_event = voting_contract.event("Vote")?;
+    let ballot_event = voting_contract.events().ballot_created();
+    let vote_event = voting_contract.events().vote();
     let change_event = net_con_contract.events().change_finalized();
     let init_change_event = net_con_contract.events().initiate_change();
 
     // Find all ballots and voter changes.
-    let ballot_or_change_filter = ballot_event
-        .create_filter(ethabi::RawTopicFilter::default())
-        .expect("create ballot event filter")
-        .or(change_event.create_filter())
-        .or(init_change_event.create_filter(ethabi::Topic::Any))
-        .to_filter_builder()
-        .build();
+    let ballot_or_change_filter =
+        (ballot_event.create_filter(ethabi::Topic::Any, ethabi::Topic::Any, ethabi::Topic::Any))
+            .or(change_event.create_filter())
+            .or(init_change_event.create_filter(ethabi::Topic::Any))
+            .to_filter_builder()
+            .build();
     let ballot_change_logs_filter = web3.eth_filter()
         .create_logs_filter(ballot_or_change_filter)
         .wait()?;
@@ -127,14 +123,13 @@ fn count_votes(
                 }
             }
             prev_init_change = Some(init_change);
-        } else if let Ok(ballot_log) = ballot_event.parse_log(log.into_raw()) {
+        } else if let Ok(ballot) = ballot_event.parse_log(log.into_raw()) {
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
-            let ballot = BallotCreated::from_log(&ballot_log)?;
             if verbose {
-                println!("• {}", ballot);
+                println!("• {:?}", ballot);
             }
             let vote_filter = vote_event
-                .create_filter(ballot.vote_topic_filter())?
+                .create_filter(ballot.id, ethabi::Topic::Any)
                 .to_filter_builder()
                 .build();
             let vote_logs_filter = web3.eth_filter().create_logs_filter(vote_filter).wait()?;
@@ -142,7 +137,7 @@ fn count_votes(
             let votes = vote_logs
                 .into_iter()
                 .map(|vote_log| {
-                    let vote = Vote::from_log(&vote_event.parse_log(vote_log.into_raw())?)?;
+                    let vote = vote_event.parse_log(vote_log.into_raw())?;
                     if !voters.contains(&vote.voter) {
                         if verbose {
                             eprintln!("  Unexpected voter {}", vote.voter);
@@ -151,7 +146,7 @@ fn count_votes(
                     }
                     Ok(vote)
                 })
-                .collect::<Result<Vec<Vote>, Error>>()?;
+                .collect::<Result<Vec<_>, Error>>()?;
             stats.add_ballot(&voters, &votes);
         } else {
             return Err(ErrorKind::UnexpectedLogParams.into());
