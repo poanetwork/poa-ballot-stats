@@ -1,6 +1,4 @@
-use ethabi::Token;
-use util;
-use web3::contract::{tokens, Error, ErrorKind};
+use ethabi;
 
 /// Validator metadata.
 #[derive(Clone, Debug)]
@@ -17,17 +15,28 @@ pub struct Validator {
     // uint256 minThreshold,
 }
 
-impl tokens::Detokenize for Validator {
-    /// Returns a `Validator` if the token's types match the fields.
-    fn from_tokens(tokens: Vec<Token>) -> Result<Validator, Error> {
-        match (tokens.get(0), tokens.get(1)) {
-            (Some(&Token::FixedBytes(ref first)), Some(&Token::FixedBytes(ref last))) => {
-                Ok(Validator {
-                    first_name: util::bytes_to_string(first),
-                    last_name: util::bytes_to_string(last),
-                })
-            }
-            _ => Err(ErrorKind::InvalidOutputType("Validator".to_string()).into()),
+type ValidatorTuple = (
+    ethabi::Hash,
+    ethabi::Hash,
+    ethabi::Hash,
+    String,
+    ethabi::Hash,
+    ethabi::Hash,
+    ethabi::Uint,
+    ethabi::Uint,
+    ethabi::Uint,
+    ethabi::Uint,
+);
+
+impl From<ValidatorTuple> for Validator {
+    fn from((first_name_h, last_name_h, ..): ValidatorTuple) -> Validator {
+        Validator {
+            first_name: String::from_utf8_lossy(&*first_name_h)
+                .to_owned()
+                .to_string(),
+            last_name: String::from_utf8_lossy(&*last_name_h)
+                .to_owned()
+                .to_string(),
         }
     }
 }

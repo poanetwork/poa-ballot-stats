@@ -20,11 +20,11 @@ mod util;
 mod validator;
 
 use error::{Error, ErrorKind};
+use ethabi::Address;
 use stats::Stats;
 use std::default::Default;
 use std::fs::File;
-use util::{ContractExt, HexBytes, HexList, TopicFilterExt, Web3LogExt};
-use web3::futures::Future;
+use util::{HexBytes, HexList, TopicFilterExt, Web3LogExt};
 
 use_contract!(
     net_con,
@@ -36,6 +36,12 @@ use_contract!(
     "VotingToChangeKeys",
     "abi/VotingToChangeKeys.abi.json"
 );
+use_contract!(
+    val_meta,
+    "ValidatorMetadata",
+    "abi/ValidatorMetadata.abi.json"
+);
+use_contract!(key_mgr, "KeysManager", "abi/KeysManager.abi.json");
 
 #[derive(Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -50,21 +56,19 @@ fn count_votes(
     verbose: bool,
     contract_addrs: &ContractAddresses,
 ) -> Result<Stats, Error> {
+    // Calls `println!` if `verbose` is `true`.
+    macro_rules! vprintln { ($($arg:tt)*) => { if verbose { println!($($arg)*); } } }
+
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
 
-    let val_meta_abi = File::open("abi/ValidatorMetadata.abi.json").expect("read val meta abi");
-    let key_mgr_abi = File::open("abi/KeysManager.abi.json").expect("read key mgr abi");
-
     let voting_contract = voting::VotingToChangeKeys::default();
     let net_con_contract = net_con::NetworkConsensus::default();
-    let val_meta_contract = ethabi::Contract::load(val_meta_abi)?;
-    let key_mgr_contract = ethabi::Contract::load(key_mgr_abi)?;
+    let val_meta_contract = val_meta::ValidatorMetadata::default();
+    let key_mgr_contract = key_mgr::KeysManager::default();
 
     let val_meta_addr = util::parse_address(&contract_addrs.metadata_address).unwrap();
-    let web3_val_meta = web3::contract::Contract::new(web3.eth(), val_meta_addr, val_meta_contract);
     let key_mgr_addr = util::parse_address(&contract_addrs.keys_manager_address).unwrap();
-    let web3_key_mgr = web3::contract::Contract::new(web3.eth(), key_mgr_addr, key_mgr_contract);
 
     let ballot_event = voting_contract.events().ballot_created();
     let vote_event = voting_contract.events().vote();
@@ -72,52 +76,42 @@ fn count_votes(
     let init_change_event = net_con_contract.events().initiate_change();
 
     // Find all ballots and voter changes.
-    let ballot_or_change_filter =
-        (ballot_event.create_filter(ethabi::Topic::Any, ethabi::Topic::Any, ethabi::Topic::Any))
-            .or(change_event.create_filter())
-            .or(init_change_event.create_filter(ethabi::Topic::Any))
-            .to_filter_builder()
-            .build();
-    let ballot_change_logs_filter = web3.eth_filter()
-        .create_logs_filter(ballot_or_change_filter)
-        .wait()?;
+    let ballot_or_change_filter = (ballot_event.create_filter(None, None, None))
+        .or(change_event.create_filter())
+        .or(init_change_event.create_filter(None));
 
     // FIXME: Find out why we see no `ChangeFinalized` events, and how to obtain the initial voters.
-    let mut voters: Vec<ethabi::Address> = Vec::new();
+    let mut voters: Vec<Address> = Vec::new();
     let mut stats = Stats::default();
     let mut prev_init_change: Option<net_con::logs::InitiateChange> = None;
 
-    if verbose {
-        println!("Collecting events…");
-    }
+    vprintln!("Collecting events…");
     let mut event_found = false;
 
     // Iterate over all ballot and voter change events.
-    for log in ballot_change_logs_filter.logs().wait()? {
+    for log in ballot_or_change_filter.logs(&web3)? {
         event_found = true;
         if let Ok(change) = change_event.parse_log(log.clone().into_raw()) {
             // If it is a `ChangeFinalized`, update the current set of voters.
-            if verbose {
-                println!(
-                    "• ChangeFinalized {{ new_set: {} }}",
-                    HexList(&change.new_set)
-                );
-            }
+            vprintln!(
+                "• ChangeFinalized {{ new_set: {} }}",
+                HexList(&change.new_set)
+            );
             voters = change.new_set;
         } else if let Ok(init_change) = init_change_event.parse_log(log.clone().into_raw()) {
             // If it is an `InitiateChange`, update the current set of voters.
-            if verbose {
-                println!(
-                    "• InitiateChange {{ parent_hash: {}, new_set: {} }}",
-                    HexBytes(&init_change.parent_hash),
-                    HexList(&init_change.new_set)
-                );
-            }
+            vprintln!(
+                "• InitiateChange {{ parent_hash: {}, new_set: {} }}",
+                HexBytes(&init_change.parent_hash),
+                HexList(&init_change.new_set)
+            );
             if let Some(prev) = prev_init_change.take() {
+                let raw_call = util::raw_call(key_mgr_addr, web3.eth());
+                let get_voting_by_mining_fn = key_mgr_contract.functions().get_voting_by_mining();
                 voters = vec![];
                 for mining_key in prev.new_set {
-                    let voter = web3_key_mgr.simple_query("getVotingByMining", mining_key)?;
-                    if voter != ethabi::Address::zero() {
+                    let voter = get_voting_by_mining_fn.call(mining_key, &*raw_call)?;
+                    if voter != Address::zero() {
                         voters.push(voter);
                     }
                 }
@@ -125,23 +119,15 @@ fn count_votes(
             prev_init_change = Some(init_change);
         } else if let Ok(ballot) = ballot_event.parse_log(log.into_raw()) {
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
-            if verbose {
-                println!("• {:?}", ballot);
-            }
-            let vote_filter = vote_event
-                .create_filter(ballot.id, ethabi::Topic::Any)
-                .to_filter_builder()
-                .build();
-            let vote_logs_filter = web3.eth_filter().create_logs_filter(vote_filter).wait()?;
-            let vote_logs = vote_logs_filter.logs().wait()?;
-            let votes = vote_logs
+            vprintln!("• {:?}", ballot);
+            let votes = vote_event
+                .create_filter(ballot.id, None)
+                .logs(&web3)?
                 .into_iter()
                 .map(|vote_log| {
                     let vote = vote_event.parse_log(vote_log.into_raw())?;
                     if !voters.contains(&vote.voter) {
-                        if verbose {
-                            eprintln!("  Unexpected voter {}", vote.voter);
-                        }
+                        vprintln!("  Unexpected voter {}", vote.voter);
                         voters.push(vote.voter);
                     }
                     Ok(vote)
@@ -157,20 +143,15 @@ fn count_votes(
         return Err(ErrorKind::NoEventsFound.into());
     }
 
-    if verbose {
-        println!(""); // Add a new line between event log and table.
-    }
+    vprintln!(""); // Add a new line between event log and table.
 
     // Finally, gather the metadata for all voters.
+    let raw_call = util::raw_call(val_meta_addr, web3.eth());
+    let get_mining_by_voting_key_fn = val_meta_contract.functions().get_mining_by_voting_key();
+    let validators_fn = val_meta_contract.functions().validators();
     for voter in voters {
-        let mining_key = match web3_val_meta.simple_query("getMiningByVotingKey", voter) {
-            Ok(key) => key,
-            Err(err) => {
-                eprintln!("Could not fetch mining key for {:?}: {:?}", voter, err);
-                continue;
-            }
-        };
-        let validator = web3_val_meta.simple_query("validators", mining_key)?;
+        let mining_key = get_mining_by_voting_key_fn.call(voter, &*raw_call)?;
+        let validator = validators_fn.call(mining_key, &*raw_call)?.into();
         stats.set_metadata(&voter, mining_key, validator);
     }
     Ok(stats)
