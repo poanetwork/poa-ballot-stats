@@ -24,7 +24,12 @@ use ethabi::Address;
 use stats::Stats;
 use std::default::Default;
 use std::fs::File;
+use std::time::{SystemTime, UNIX_EPOCH};
 use util::{HexBytes, HexList, TopicFilterExt, Web3LogExt};
+use web3::futures::Future;
+
+/// The maximum age in seconds of the latest block.
+const MAX_BLOCK_AGE: u64 = 60 * 60;
 
 use_contract!(
     net_con,
@@ -50,6 +55,18 @@ struct ContractAddresses {
     keys_manager_address: String,
 }
 
+/// Shows a warning if the node's latest block is outdated.
+fn check_synced<T: web3::Transport>(web3: &web3::Web3<T>) {
+    let id = web3::types::BlockId::Number(web3::types::BlockNumber::Latest);
+    let block = web3.eth().block(id).wait().expect("get latest block");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Current timestamp is earlier than the Unix epoch!");
+    if block.timestamp < (now.as_secs() - MAX_BLOCK_AGE).into() {
+        eprintln!("WARNING: The node is not fully synchronized. Stats may be inaccurate.");
+    }
+}
+
 /// Finds all logged ballots and returns statistics about how many were missed by each voter.
 fn count_votes(
     url: &str,
@@ -61,6 +78,8 @@ fn count_votes(
 
     let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
     let web3 = web3::Web3::new(transport);
+
+    check_synced(&web3);
 
     let voting_contract = voting::VotingToChangeKeys::default();
     let net_con_contract = net_con::NetworkConsensus::default();
@@ -150,7 +169,13 @@ fn count_votes(
     let get_mining_by_voting_key_fn = val_meta_contract.functions().get_mining_by_voting_key();
     let validators_fn = val_meta_contract.functions().validators();
     for voter in voters {
-        let mining_key = get_mining_by_voting_key_fn.call(voter, &*raw_call)?;
+        let mining_key = match get_mining_by_voting_key_fn.call(voter, &*raw_call) {
+            Err(err) => {
+                eprintln!("Failed to find mining key for voter {}: {:?}", voter, err);
+                continue;
+            }
+            Ok(key) => key,
+        };
         let validator = validators_fn.call(mining_key, &*raw_call)?.into();
         stats.set_metadata(&voter, mining_key, validator);
     }
