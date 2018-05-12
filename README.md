@@ -22,3 +22,7 @@ $ cargo run -- -h
 $ cargo run
 $ cargo run -- -c contracts/sokol.json https://sokol.poa.network -v
 ```
+
+## Screenshot
+
+![Screenshot](screenshot.png)
