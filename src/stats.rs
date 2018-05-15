@@ -1,9 +1,9 @@
 use colored::{Color, Colorize};
 use ethabi::Address;
-use events::Vote;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use validator::Validator;
+use voting;
 
 /// The count of ballots and cast votes, as well as metadata for a particular voter.
 #[derive(Clone, Default)]
@@ -27,7 +27,7 @@ pub struct Stats {
 impl Stats {
     /// Adds a ballot: `voters` are the voting keys of everyone who was allowed to cast a vote, and
     /// `votes` are the ones that were actually cast.
-    pub fn add_ballot(&mut self, voters: &[Address], votes: &[Vote]) {
+    pub fn add_ballot(&mut self, voters: &[Address], votes: &[voting::logs::Vote]) {
         for voter in voters {
             let mut vs = self.voter_stats
                 .entry(voter.clone())

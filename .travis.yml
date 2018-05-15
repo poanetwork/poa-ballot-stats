@@ -1,0 +1,65 @@
+# Based on the "trust" template v0.1.2
+# https://github.com/japaric/trust/tree/v0.1.2
+
+dist: trusty
+language: rust
+services: docker
+sudo: required
+rust: nightly-2018-04-19
+cache: cargo
+
+env:
+  global:
+    - CRATE_NAME=poa-ballot-stats
+    - RUST_BACKTRACE=1
+    - RUSTFLAGS="-D warnings"
+
+matrix:
+  include:
+    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-apple-darwin
+      os: osx
+
+before_install:
+  - set -e
+  - rustup self update
+  - rustup component add rustfmt-preview
+  # - cargo install clippy -f --vers=0.0.195
+
+install:
+  - sh ci/install.sh
+  - source ~/.cargo/env || true
+
+script:
+  - bash ci/script.sh
+
+after_script: set +e
+
+before_deploy:
+  - sh ci/before_deploy.sh
+
+deploy:
+  api_key:
+    secure: mj9bnqoc/lbsLv5Wiek37YY7BvOp+CN/Ier/uXC32uSRsJp5ue5/aru181oEhMI+6yeRPQyCrzzpoqMHcM5ARAp0GFW1YOkwqsnzaaiTMYTLGdLxtYBVNCrcLlUU474fvw92GCjhX2Ag8NpaQRYAaD1DMrkBTJ2qYJfm5zaXwByVu1bP1JX2zQl5mx6+/5j2DtrzQwMzRNBGzrJDuodRaeZ+/+cZvTLKkP4JaV7/iSuQ19NptSkLfflvB28J/XOnZ6m4mHbqGAfeNOB9YtH2ag70bvM1qfz4Y1fbphh8NJ4tngslxptOQ2oktAglebmthjiUAu8rhE1V63YioY2e/GaLIq3GSWOCleU6/1IvAac6VjjPBpaw6RqQgCVUCc+w6+CxmaY1CZZII2whM5FqE9AC22oTvK2SUfIzRXolYqUVYZsHI+75DBqExyE3QwW1T7IMTzqK25uokdSZBHdvC5yxZQVjDsuD+TukCOyPDmKW8Dlnn6B5XVTWruF+qALzQA1T8qy++QPz1O5i2lM61SR+iYlQQ/+IEr/je0rw1cpC9zp2/FFb/FAOyXFrGk5UGRSsewBz7j0gsqDin5zrqqBuRv+/hlEgXBJ7xFpOQVPJDk7n/Wz86whQLu7VUcKB3w/3+MO20i0DhXI4Rx8otrVWgDMq8cJ1mGN8bZhl0k8=
+  file_glob: true
+  file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
+  on:
+    condition: $TRAVIS_RUST_VERSION = nightly-2018-04-19
+    tags: true
+  provider: releases
+  skip_cleanup: true
+
+cache: cargo
+before_cache:
+  # Travis can't cache files that are not readable by "others"
+  - chmod -R a+r $HOME/.cargo
+
+branches:
+  only:
+    # release tags
+    - /^v\d+\.\d+\.\d+.*$/
+    - master
+
+notifications:
+  email:
+    on_success: never
