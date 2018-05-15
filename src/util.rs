@@ -1,4 +1,5 @@
-use ethabi::{self, Address, Bytes, Uint};
+use ethabi::{self, Address, Bytes};
+use std::str::FromStr;
 use std::{fmt, u8};
 use web3;
 use web3::futures::Future;
@@ -7,17 +8,10 @@ use web3::futures::Future;
 
 /// Parses the string as a 40-digit hexadecimal number, and returns the corresponding `Address`.
 pub fn parse_address(mut s: &str) -> Option<Address> {
-    let mut bytes = [0u8; 20];
     if &s[..2] == "0x" {
         s = &s[2..];
     }
-    for i in 0..20 {
-        match u8::from_str_radix(&s[(2 * i)..(2 * i + 2)], 16) {
-            Ok(b) => bytes[i] = b,
-            Err(_) => return None,
-        }
-    }
-    Some(Address::from_slice(&bytes))
+    Address::from_str(s).ok()
 }
 
 /// Returns a wrapper of a contract address, to make function calls using the latest block.
@@ -137,44 +131,6 @@ impl Web3LogExt for web3::types::Log {
     }
 }
 
-pub trait LogExt {
-    /// Returns the `i`-th parameter, if it has the given name, otherwise `None`.
-    fn param(&self, i: usize, name: &str) -> Option<&ethabi::Token>;
-
-    /// Returns the `i`-th parameter, if it is an `Address` and has the given name, otherwise
-    /// `None`.
-    fn address_param(&self, i: usize, name: &str) -> Option<&Address>;
-
-    /// Returns the `i`-th parameter, if it is a `Uint` and has the given name, otherwise `None`.
-    fn uint_param(&self, i: usize, name: &str) -> Option<&Uint>;
-}
-
-impl LogExt for ethabi::Log {
-    fn param(&self, i: usize, name: &str) -> Option<&ethabi::Token> {
-        self.params.get(i).and_then(|param| {
-            if param.name == name {
-                Some(&param.value)
-            } else {
-                None
-            }
-        })
-    }
-
-    fn address_param(&self, i: usize, name: &str) -> Option<&Address> {
-        match self.param(i, name) {
-            Some(&ethabi::Token::Address(ref address)) => Some(address),
-            _ => None,
-        }
-    }
-
-    fn uint_param(&self, i: usize, name: &str) -> Option<&Uint> {
-        match self.param(i, name) {
-            Some(&ethabi::Token::Uint(ref i)) => Some(i),
-            _ => None,
-        }
-    }
-}
-
 /// Wrapper for a byte array, whose `Display` implementation outputs shortened hexadecimal strings.
 pub struct HexBytes<'a>(pub &'a [u8]);
 
@@ -209,5 +165,17 @@ where
             write!(f, "{}", HexBytes(item.as_ref()))?;
         }
         write!(f, "]")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_parse_address() {
+        let addr_str = "0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf";
+        let addr = super::parse_address(addr_str).expect("parse address with 0x");
+        let addr2 = super::parse_address(&addr_str[2..]).expect("parse address without 0x");
+        assert_eq!(addr, addr2);
+        assert_eq!(addr_str, &format!("{:?}", addr));
     }
 }

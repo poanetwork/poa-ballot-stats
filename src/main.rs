@@ -86,8 +86,10 @@ fn count_votes(
     let val_meta_contract = val_meta::ValidatorMetadata::default();
     let key_mgr_contract = key_mgr::KeysManager::default();
 
-    let val_meta_addr = util::parse_address(&contract_addrs.metadata_address).unwrap();
-    let key_mgr_addr = util::parse_address(&contract_addrs.keys_manager_address).unwrap();
+    let val_meta_addr =
+        util::parse_address(&contract_addrs.metadata_address).expect("parse contract address");
+    let key_mgr_addr =
+        util::parse_address(&contract_addrs.keys_manager_address).expect("parse contract address");
 
     let ballot_event = voting_contract.events().ballot_created();
     let vote_event = voting_contract.events().vote();
