@@ -29,7 +29,8 @@ impl Stats {
     /// `votes` are the ones that were actually cast.
     pub fn add_ballot(&mut self, voters: &[Address], votes: &[voting::logs::Vote]) {
         for voter in voters {
-            let mut vs = self.voter_stats
+            let mut vs = self
+                .voter_stats
                 .entry(voter.clone())
                 .or_insert_with(VoterStats::default);
             vs.ballots += 1;
@@ -59,7 +60,8 @@ impl Stats {
 
 impl Display for Stats {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let mut lines: Vec<DisplayLine> = self.voter_stats
+        let mut lines: Vec<DisplayLine> = self
+            .voter_stats
             .iter()
             .map(|(addr, s)| DisplayLine {
                 votes_per_thousand: s.voted * 1000 / s.ballots,

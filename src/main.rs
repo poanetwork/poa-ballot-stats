@@ -31,22 +31,28 @@ use web3::futures::Future;
 /// The maximum age in seconds of the latest block.
 const MAX_BLOCK_AGE: u64 = 60 * 60;
 
-use_contract!(
-    net_con,
-    "NetworkConsensus",
-    "abi/PoaNetworkConsensus.abi.json"
-);
-use_contract!(
-    voting,
-    "VotingToChangeKeys",
-    "abi/VotingToChangeKeys.abi.json"
-);
-use_contract!(
-    val_meta,
-    "ValidatorMetadata",
-    "abi/ValidatorMetadata.abi.json"
-);
-use_contract!(key_mgr, "KeysManager", "abi/KeysManager.abi.json");
+// The `use_contract!` macro triggers several Clippy warnings.
+#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments, redundant_closure, needless_update))]
+mod contracts {
+    use_contract!(
+        net_con,
+        "NetworkConsensus",
+        "abi/PoaNetworkConsensus.abi.json"
+    );
+    use_contract!(
+        voting,
+        "VotingToChangeKeys",
+        "abi/VotingToChangeKeys.abi.json"
+    );
+    use_contract!(
+        val_meta,
+        "ValidatorMetadata",
+        "abi/ValidatorMetadata.abi.json"
+    );
+    use_contract!(key_mgr, "KeysManager", "abi/KeysManager.abi.json");
+}
+
+use contracts::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

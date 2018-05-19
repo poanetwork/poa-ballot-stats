@@ -5,7 +5,7 @@ dist: trusty
 language: rust
 services: docker
 sudo: required
-rust: nightly-2018-04-19
+rust: nightly-2018-05-19
 cache: cargo
 
 env:
@@ -24,7 +24,7 @@ before_install:
   - set -e
   - rustup self update
   - rustup component add rustfmt-preview
-  # - cargo install clippy -f --vers=0.0.195
+  - cargo install clippy -f --vers=0.0.202
 
 install:
   - sh ci/install.sh
@@ -44,7 +44,7 @@ deploy:
   file_glob: true
   file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
   on:
-    condition: $TRAVIS_RUST_VERSION = nightly-2018-04-19
+    condition: $TRAVIS_RUST_VERSION = nightly-2018-05-19
     tags: true
   provider: releases
   skip_cleanup: true
