@@ -1,7 +1,7 @@
 set -ex
 
 main() {
-    cargo fmt -- --write-mode=diff
+    cargo fmt -- --check
 
     cross build --target $TARGET
     cross build --target $TARGET --release
@@ -14,6 +14,8 @@ main() {
     cross test --target $TARGET --release
 
     cross build --target $TARGET --release
+
+    cross clippy --tests --all-features -- -D clippy
 }
 
 # we don't run the "test phase" when doing deploys
