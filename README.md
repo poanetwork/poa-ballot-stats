@@ -16,6 +16,10 @@ The `-c` option takes a map with the POA contracts' addresses in JSON format. Yo
 current maps for the main and test network the `contracts` folder. By default, it uses `core.json`,
 for the main network.
 
+**It doesn't work with https://core.poa.network at the moment!**
+Please use https://core-solo.poa.network instead.
+See [issue #4](https://github.com/poanetwork/poa-ballot-stats/issues/4) for details.
+
 Examples:
 
 ```bash
