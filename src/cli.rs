@@ -30,5 +30,12 @@ pub fn get_matches() -> ArgMatches<'static> {
                 .help("JSON file with the contract addresses")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("period")
+                .short("p")
+                .long("period")
+                .help("The period in which votes should be counted, e.g. '5 days', '2 months'.")
+                .takes_value(true),
+        )
         .get_matches()
 }
