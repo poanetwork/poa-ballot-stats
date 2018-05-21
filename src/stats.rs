@@ -58,25 +58,36 @@ impl Stats {
     }
 }
 
+fn to_display_line((addr, s): (&Address, &VoterStats)) -> Option<DisplayLine> {
+    let votes_per_thousand = if s.ballots == 0 {
+        1000
+    } else {
+        s.voted * 1000 / s.ballots
+    };
+    let mining_key = match s.mining_key {
+        None => return None,
+        Some(ref key) => format!("{}", key),
+    };
+    let name = match s.validator {
+        None => return None,
+        Some(ref v) => format!("{} {}", v.first_name, v.last_name),
+    };
+    Some(DisplayLine {
+        votes_per_thousand,
+        voted: s.voted,
+        ballots: s.ballots,
+        voting_address: *addr,
+        mining_key,
+        name,
+    })
+}
+
 impl Display for Stats {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let mut lines: Vec<DisplayLine> = self
+        let mut lines: Vec<_> = self
             .voter_stats
             .iter()
-            .map(|(addr, s)| DisplayLine {
-                votes_per_thousand: s.voted * 1000 / s.ballots,
-                voted: s.voted,
-                ballots: s.ballots,
-                voting_address: *addr,
-                mining_key: match s.mining_key {
-                    None => "".to_string(),
-                    Some(ref key) => format!("{}", key),
-                },
-                name: match s.validator {
-                    None => "".to_string(),
-                    Some(ref v) => format!("{} {}", v.first_name, v.last_name),
-                },
-            })
+            .filter_map(to_display_line)
             .collect();
         lines.sort();
         let header = "        Missed  Voting key   Mining key   Name".bold();
