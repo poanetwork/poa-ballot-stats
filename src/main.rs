@@ -7,6 +7,7 @@ extern crate ethabi;
 extern crate ethabi_derive;
 #[macro_use(use_contract)]
 extern crate ethabi_contract;
+extern crate parse_duration;
 extern crate serde;
 #[macro_use(Deserialize)]
 extern crate serde_derive;
@@ -24,7 +25,7 @@ use ethabi::Address;
 use stats::Stats;
 use std::default::Default;
 use std::fs::File;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use util::{HexBytes, HexList, TopicFilterExt, Web3LogExt};
 use web3::futures::Future;
 
@@ -61,14 +62,25 @@ struct ContractAddresses {
     keys_manager_address: String,
 }
 
+/// Returns `true` if the block with the given number was created before the given time.
+fn is_block_older_than<T: web3::Transport>(
+    web3: &web3::Web3<T>,
+    number: web3::types::BlockNumber,
+    time: &SystemTime,
+) -> bool {
+    let id = web3::types::BlockId::Number(number);
+    let block = web3.eth().block(id).wait().expect("get block");
+    let seconds = time
+        .duration_since(UNIX_EPOCH)
+        .expect("Current timestamp is earlier than the Unix epoch!")
+        .as_secs();
+    block.timestamp < seconds.into()
+}
+
 /// Shows a warning if the node's latest block is outdated.
 fn check_synced<T: web3::Transport>(web3: &web3::Web3<T>) {
-    let id = web3::types::BlockId::Number(web3::types::BlockNumber::Latest);
-    let block = web3.eth().block(id).wait().expect("get latest block");
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Current timestamp is earlier than the Unix epoch!");
-    if block.timestamp < (now.as_secs() - MAX_BLOCK_AGE).into() {
+    let min_time = SystemTime::now() - Duration::from_secs(MAX_BLOCK_AGE);
+    if is_block_older_than(web3, web3::types::BlockNumber::Latest, &min_time) {
         eprintln!("WARNING: The node is not fully synchronized. Stats may be inaccurate.");
     }
 }
@@ -78,6 +90,7 @@ fn count_votes(
     url: &str,
     verbose: bool,
     contract_addrs: &ContractAddresses,
+    start: SystemTime,
 ) -> Result<Stats, Error> {
     // Calls `println!` if `verbose` is `true`.
     macro_rules! vprintln { ($($arg:tt)*) => { if verbose { println!($($arg)*); } } }
@@ -144,7 +157,16 @@ fn count_votes(
                 }
             }
             prev_init_change = Some(init_change);
-        } else if let Ok(ballot) = ballot_event.parse_log(log.into_raw()) {
+        } else if let Ok(ballot) = ballot_event.parse_log(log.clone().into_raw()) {
+            let block_number = web3::types::BlockNumber::Number(
+                log.block_number
+                    .expect("ballot event is missing block number")
+                    .into(),
+            );
+            if is_block_older_than(&web3, block_number, &start) {
+                vprintln!("• Ballot event too old; skipping: {:?}", ballot);
+                continue;
+            }
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
             vprintln!("• {:?}", ballot);
             let votes = vote_event
@@ -199,6 +221,14 @@ fn main() {
         .unwrap_or("contracts/core.json");
     let file = File::open(contract_file).expect("open contracts file");
     let contract_addrs = serde_json::from_reader(file).expect("parse contracts file");
-    let stats = count_votes(url, verbose, &contract_addrs).expect("count votes");
+    let start = matches
+        .value_of("period")
+        .map(|period| {
+            let duration = parse_duration::parse(period)
+                .expect("period must be in the format '5 days', '2 months', etc.");
+            SystemTime::now() - duration
+        })
+        .unwrap_or(UNIX_EPOCH);
+    let stats = count_votes(url, verbose, &contract_addrs, start).expect("count votes");
     println!("{}", stats);
 }

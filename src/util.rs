@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::{fmt, u8};
 use web3;
 use web3::futures::Future;
+use web3::helpers::CallResult;
 
 // TODO: Evaluate whether any of these would make sense to include in `web3`.
 
@@ -113,11 +114,10 @@ impl TopicFilterExt for ethabi::TopicFilter {
         self,
         web3: &web3::Web3<T>,
     ) -> Result<Vec<web3::types::Log>, web3::error::Error> {
-        web3.eth_filter()
-            .create_logs_filter(self.to_filter_builder().build())
-            .wait()?
-            .logs()
-            .wait()
+        // TODO: Once a version with https://github.com/tomusdrw/rust-web3/pull/122 is available:
+        // self.transport.logs(self.to_filter_builder().build())
+        let filter = web3::helpers::serialize(&self.to_filter_builder().build());
+        CallResult::new(web3.transport().execute("eth_getLogs", vec![filter])).wait()
     }
 }
 

@@ -16,15 +16,14 @@ The `-c` option takes a map with the POA contracts' addresses in JSON format. Yo
 current maps for the main and test network the `contracts` folder. By default, it uses `core.json`,
 for the main network.
 
-**It doesn't work with https://core.poa.network at the moment!**
-Please use https://core-solo.poa.network instead.
-See [issue #4](https://github.com/poanetwork/poa-ballot-stats/issues/4) for details.
+The `-p` option takes a time interval in hours, days, months, etc. E.g. `-p "10 weeks"` will only count participation in ballots that were created within the last 10 weeks.
 
 Examples:
 
 ```bash
 $ cargo run -- -h
 $ cargo run
+$ cargo run -- https://core.poa.network -v -p "10 weeks"
 $ cargo run -- -c contracts/sokol.json https://sokol.poa.network -v
 ```
 
