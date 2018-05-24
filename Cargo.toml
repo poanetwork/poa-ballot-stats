@@ -1,6 +1,6 @@
 [package]
 name = "poa-ballot-stats"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 description = "Read POA voting records and rank voters by how many ballots they missed."
 
@@ -15,4 +15,4 @@ parse_duration = "1.0.1"
 serde = "1.0.36"
 serde_derive = "1.0.36"
 serde_json = "1.0.13"
-web3 = { version = "0.3.0", default-features = false, features = ["http"] }
+web3 = { version = "0.3.0", default-features = false, features = ["http", "tls"] }
