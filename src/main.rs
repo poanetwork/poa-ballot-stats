@@ -20,6 +20,7 @@ mod stats;
 mod util;
 mod validator;
 
+use colored::Colorize;
 use error::{Error, ErrorKind};
 use ethabi::Address;
 use stats::Stats;
@@ -91,6 +92,7 @@ fn count_votes(
     verbose: bool,
     contract_addrs: &ContractAddresses,
     start: SystemTime,
+    start_block: u64,
 ) -> Result<Stats, Error> {
     // Calls `println!` if `verbose` is `true`.
     macro_rules! vprintln { ($($arg:tt)*) => { if verbose { println!($($arg)*); } } }
@@ -131,17 +133,23 @@ fn count_votes(
     // Iterate over all ballot and voter change events.
     for log in ballot_or_change_filter.logs(&web3)? {
         event_found = true;
+        let block_num = log
+            .block_number
+            .expect("event is missing block number")
+            .into();
         if let Ok(change) = change_event.parse_log(log.clone().into_raw()) {
             // If it is a `ChangeFinalized`, update the current set of voters.
             vprintln!(
-                "• ChangeFinalized {{ new_set: {} }}",
+                "• {} ChangeFinalized {{ new_set: {} }}",
+                format!("#{}", block_num).bold(),
                 HexList(&change.new_set)
             );
             voters = change.new_set;
         } else if let Ok(init_change) = init_change_event.parse_log(log.clone().into_raw()) {
             // If it is an `InitiateChange`, update the current set of voters.
             vprintln!(
-                "• InitiateChange {{ parent_hash: {}, new_set: {} }}",
+                "• {} InitiateChange {{ parent_hash: {}, new_set: {} }}",
+                format!("#{}", block_num).bold(),
                 HexBytes(&init_change.parent_hash),
                 HexList(&init_change.new_set)
             );
@@ -158,17 +166,17 @@ fn count_votes(
             }
             prev_init_change = Some(init_change);
         } else if let Ok(ballot) = ballot_event.parse_log(log.clone().into_raw()) {
-            let block_number = web3::types::BlockNumber::Number(
-                log.block_number
-                    .expect("ballot event is missing block number")
-                    .into(),
-            );
-            if is_block_older_than(&web3, block_number, &start) {
-                vprintln!("• Ballot event too old; skipping: {:?}", ballot);
+            let block_number = web3::types::BlockNumber::Number(block_num);
+            if block_num < start_block || is_block_older_than(&web3, block_number, &start) {
+                vprintln!(
+                    "• {} Ballot event too old; skipping: {:?}",
+                    format!("#{}", block_num).bold(),
+                    ballot
+                );
                 continue;
             }
             // If it is a `BallotCreated`, find the corresponding votes and update the stats.
-            vprintln!("• {:?}", ballot);
+            vprintln!("• {} {:?}", format!("#{}", block_num).bold(), ballot);
             let votes = vote_event
                 .create_filter(ballot.id, None)
                 .logs(&web3)?
@@ -229,6 +237,12 @@ fn main() {
             SystemTime::now() - duration
         })
         .unwrap_or(UNIX_EPOCH);
-    let stats = count_votes(url, verbose, &contract_addrs, start).expect("count votes");
+    let start_block = matches.value_of("block").map_or(0, |block| {
+        block
+            .parse()
+            .expect("block number must be a non-negative integer")
+    });
+    let stats =
+        count_votes(url, verbose, &contract_addrs, start, start_block).expect("count votes");
     println!("{}", stats);
 }
