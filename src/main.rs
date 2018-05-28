@@ -22,7 +22,7 @@ mod util;
 mod validator;
 
 use std::fs::File;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 // The `use_contract!` macro triggers several Clippy warnings.
 #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments, redundant_closure, needless_update))]
@@ -49,27 +49,34 @@ use contracts::*;
 
 fn main() {
     let matches = cli::get_matches();
+
     let url = matches.value_of("url").unwrap_or("http://127.0.0.1:8545");
-    let verbose = matches.is_present("verbose");
     let contract_file = matches
         .value_of("contracts")
         .unwrap_or("contracts/core.json");
     let file = File::open(contract_file).expect("open contracts file");
     let contract_addrs = serde_json::from_reader(file).expect("parse contracts file");
-    let start = matches
-        .value_of("period")
-        .map(|period| {
-            let duration = parse_duration::parse(period)
-                .expect("period must be in the format '5 days', '2 months', etc.");
-            SystemTime::now() - duration
-        })
-        .unwrap_or(UNIX_EPOCH);
-    let start_block = matches.value_of("block").map_or(0, |block| {
-        block
-            .parse()
-            .expect("block number must be a non-negative integer")
-    });
-    let stats = counter::count_votes(url, verbose, &contract_addrs, start, start_block)
-        .expect("count votes");
+
+    let mut counter = counter::Counter::new(url, &contract_addrs);
+
+    if matches.is_present("verbose") {
+        counter.set_verbose();
+    }
+
+    if let Some(period) = matches.value_of("period") {
+        let duration = parse_duration::parse(period)
+            .expect("period must be in the format '5 days', '2 months', etc.");
+        counter.set_start_time(SystemTime::now() - duration);
+    }
+
+    if let Some(start_block) = matches.value_of("block") {
+        counter.set_start_block(
+            start_block
+                .parse()
+                .expect("block number must be a non-negative integer"),
+        );
+    }
+
+    let stats = counter.count_votes().expect("count votes");
     println!("{}", stats);
 }
