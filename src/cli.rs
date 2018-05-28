@@ -37,5 +37,12 @@ pub fn get_matches() -> ArgMatches<'static> {
                 .help("The period in which votes should be counted, e.g. '5 days', '2 months'.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("block")
+                .short("b")
+                .long("block")
+                .help("The earliest block in which votes should be counted.")
+                .takes_value(true),
+        )
         .get_matches()
 }

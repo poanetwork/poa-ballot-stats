@@ -16,7 +16,7 @@ The `-c` option takes a map with the POA contracts' addresses in JSON format. Yo
 current maps for the main and test network the `contracts` folder. By default, it uses `core.json`,
 for the main network.
 
-The `-p` option takes a time interval in hours, days, months, etc. E.g. `-p "10 weeks"` will only count participation in ballots that were created within the last 10 weeks.
+The `-p` option takes a time interval in hours, days, months, etc. E.g. `-p "10 weeks"` will only count participation in ballots that were created within the last 10 weeks. Alternatively, instead of a _time_, you can specify the earliest block _number_ as a decimal integer with the `-b` option.
 
 Examples:
 
