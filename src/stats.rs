@@ -27,7 +27,10 @@ pub struct Stats {
 impl Stats {
     /// Adds a ballot: `voters` are the voting keys of everyone who was allowed to cast a vote, and
     /// `votes` are the ones that were actually cast.
-    pub fn add_ballot(&mut self, voters: &[Address], votes: &[voting::logs::Vote]) {
+    pub fn add_ballot<'a, I>(&mut self, voters: I, votes: &[voting::logs::Vote])
+    where
+        I: IntoIterator<Item = &'a Address>,
+    {
         for voter in voters {
             let mut vs = self
                 .voter_stats

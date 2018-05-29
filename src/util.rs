@@ -1,3 +1,4 @@
+use colored::{Color, Colorize};
 use ethabi::{self, Address, Bytes};
 use std::str::FromStr;
 use std::{fmt, u8};
@@ -150,21 +151,21 @@ impl<'a> fmt::Display for HexBytes<'a> {
 
 /// Wrapper for a list of byte arrays, whose `Display` implementation outputs shortened hexadecimal
 /// strings.
-pub struct HexList<'a, T: 'a>(pub &'a [T]);
+pub struct HexList<'a, T: 'a, I: IntoIterator<Item = &'a T>>(pub I, pub Color);
 
-impl<'a, T: 'a> fmt::Display for HexList<'a, T>
+impl<'a, T: 'a, I: IntoIterator<Item = &'a T> + Clone> fmt::Display for HexList<'a, T, I>
 where
     T: AsRef<[u8]>,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[")?;
-        for (i, item) in self.0.iter().enumerate() {
+        for (i, item) in self.0.clone().into_iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", HexBytes(item.as_ref()))?;
+            let item = format!("{}", HexBytes(item.as_ref()));
+            write!(f, "{}", item.color(self.1))?;
         }
-        write!(f, "]")
+        Ok(())
     }
 }
 
