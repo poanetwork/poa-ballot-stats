@@ -28,11 +28,6 @@ use std::time::SystemTime;
 #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments, redundant_closure, needless_update))]
 mod contracts {
     use_contract!(
-        net_con,
-        "NetworkConsensus",
-        "abi/PoaNetworkConsensus.abi.json"
-    );
-    use_contract!(
         voting,
         "VotingToChangeKeys",
         "abi/VotingToChangeKeys.abi.json"

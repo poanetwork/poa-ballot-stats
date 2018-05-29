@@ -1,22 +1,29 @@
-use colored::Colorize;
-use contracts::{key_mgr, net_con, val_meta, voting};
+use colored::{Color, Colorize};
+use contracts::{key_mgr, val_meta, voting};
 use error::{Error, ErrorKind};
 use ethabi::Address;
 use stats::Stats;
+use std::collections::BTreeSet;
 use std::default::Default;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use util::{self, HexBytes, HexList, TopicFilterExt, Web3LogExt};
+use util::{self, HexList, TopicFilterExt, Web3LogExt};
 use web3;
 use web3::futures::Future;
 
 /// The maximum age in seconds of the latest block.
 const MAX_BLOCK_AGE: u64 = 60 * 60;
 
+const ERR_BLOCK_NUM: &str = "event is missing block number";
+const ERR_ADDR: &str = "parse contract address";
+const ERR_EPOCH: &str = "current timestamp is earlier than the Unix epoch";
+const ERR_BLOCK: &str = "failed to retrieve block";
+
 #[derive(Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct ContractAddresses {
     metadata_address: String,
     keys_manager_address: String,
+    voting_to_change_keys_address: String,
 }
 
 /// A vote counter, to read ballot statistics from the blockchain.
@@ -26,6 +33,7 @@ pub struct Counter {
     start_block: u64,
     val_meta_addr: Address,
     key_mgr_addr: Address,
+    voting_addr: Address,
     web3: web3::Web3<web3::transports::Http>,
     _eloop: web3::transports::EventLoopHandle,
 }
@@ -36,10 +44,11 @@ impl Counter {
         let (_eloop, transport) = web3::transports::Http::new(url).unwrap();
         let web3 = web3::Web3::new(transport);
 
-        let val_meta_addr =
-            util::parse_address(&contract_addrs.metadata_address).expect("parse contract address");
-        let key_mgr_addr = util::parse_address(&contract_addrs.keys_manager_address)
-            .expect("parse contract address");
+        let val_meta_addr = util::parse_address(&contract_addrs.metadata_address).expect(ERR_ADDR);
+        let key_mgr_addr =
+            util::parse_address(&contract_addrs.keys_manager_address).expect(ERR_ADDR);
+        let voting_addr =
+            util::parse_address(&contract_addrs.voting_to_change_keys_address).expect(ERR_ADDR);
 
         Counter {
             verbose: false,
@@ -47,6 +56,7 @@ impl Counter {
             start_block: 0,
             val_meta_addr,
             key_mgr_addr,
+            voting_addr,
             web3,
             _eloop,
         }
@@ -75,23 +85,20 @@ impl Counter {
         macro_rules! vprintln { ($($arg:tt)*) => { if self.verbose { println!($($arg)*); } } }
 
         let voting_contract = voting::VotingToChangeKeys::default();
-        let net_con_contract = net_con::NetworkConsensus::default();
         let val_meta_contract = val_meta::ValidatorMetadata::default();
         let key_mgr_contract = key_mgr::KeysManager::default();
 
         let ballot_event = voting_contract.events().ballot_created();
         let vote_event = voting_contract.events().vote();
-        let change_event = net_con_contract.events().change_finalized();
-        let init_change_event = net_con_contract.events().initiate_change();
+        let change_event = key_mgr_contract.events().voting_key_changed();
 
-        // Find all ballots and voter changes.
-        let ballot_or_change_filter = (ballot_event.create_filter(None, None, None))
-            .or(change_event.create_filter())
-            .or(init_change_event.create_filter(None));
+        // Find all ballots and voter changes. We don't filter by contract address, so we can make
+        // a single pass. Contract addresses are checked inside the loop.
+        let ballot_or_change_filter =
+            (ballot_event.create_filter(None, None, None)).or(change_event.create_filter(None));
 
-        let mut voters: Vec<Address> = Vec::new();
+        let mut voters: BTreeSet<Address> = BTreeSet::new();
         let mut stats = Stats::default();
-        let mut prev_init_change: Option<net_con::logs::InitiateChange> = None;
 
         vprintln!("Collecting events…");
         let mut event_found = false;
@@ -99,66 +106,57 @@ impl Counter {
         // Iterate over all ballot and voter change events.
         for log in ballot_or_change_filter.logs(&self.web3)? {
             event_found = true;
-            let block_num = log
-                .block_number
-                .expect("event is missing block number")
-                .into();
+            let block_num = log.block_number.expect(ERR_BLOCK_NUM).into();
             if let Ok(change) = change_event.parse_log(log.clone().into_raw()) {
-                // If it is a `ChangeFinalized`, update the current set of voters.
-                vprintln!(
-                    "• {} ChangeFinalized {{ new_set: {} }}",
-                    format!("#{}", block_num).bold(),
-                    HexList(&change.new_set)
-                );
-                voters = change.new_set;
-            } else if let Ok(init_change) = init_change_event.parse_log(log.clone().into_raw()) {
-                // If it is an `InitiateChange`, update the current set of voters.
-                vprintln!(
-                    "• {} InitiateChange {{ parent_hash: {}, new_set: {} }}",
-                    format!("#{}", block_num).bold(),
-                    HexBytes(&init_change.parent_hash),
-                    HexList(&init_change.new_set)
-                );
-                if let Some(prev) = prev_init_change.take() {
-                    let raw_call = util::raw_call(self.key_mgr_addr, self.web3.eth());
-                    let get_voting_by_mining_fn =
-                        key_mgr_contract.functions().get_voting_by_mining();
-                    voters = vec![];
-                    for mining_key in prev.new_set {
-                        let voter = get_voting_by_mining_fn.call(mining_key, &*raw_call)?;
-                        if voter != Address::zero() {
-                            voters.push(voter);
-                        }
-                    }
+                if log.address != self.key_mgr_addr {
+                    continue; // Event from another contract instance.
                 }
-                prev_init_change = Some(init_change);
+                // If it is a `VotingKeyChanged`, update the current set of voters.
+                vprintln!("• {} {:?}", format!("#{}", block_num).bold(), change);
+                match change.action.as_str() {
+                    "added" => {
+                        voters.insert(change.key);
+                    }
+                    "removed" => {
+                        voters.remove(&change.key);
+                    }
+                    _ => vprintln!("  Unexpected key change action."),
+                }
             } else if let Ok(ballot) = ballot_event.parse_log(log.clone().into_raw()) {
-                let block_number = web3::types::BlockNumber::Number(block_num);
-                if block_num < self.start_block
-                    || self.is_block_older_than(block_number, &self.start_time)
-                {
-                    vprintln!(
-                        "• {} Ballot event too old; skipping: {:?}",
-                        format!("#{}", block_num).bold(),
-                        ballot
-                    );
+                if log.address != self.voting_addr {
+                    continue; // Event from another contract instance.
+                }
+                if block_num < self.start_block || self.is_block_too_old(block_num) {
+                    let num = format!("#{}", block_num);
+                    vprintln!("• {} Ballot too old; skipping: {:?}", num.bold(), ballot);
                     continue;
                 }
                 // If it is a `BallotCreated`, find the corresponding votes and update the stats.
                 vprintln!("• {} {:?}", format!("#{}", block_num).bold(), ballot);
-                let votes = vote_event
-                    .create_filter(ballot.id, None)
-                    .logs(&self.web3)?
-                    .into_iter()
-                    .map(|vote_log| {
-                        let vote = vote_event.parse_log(vote_log.into_raw())?;
-                        if !voters.contains(&vote.voter) {
-                            vprintln!("  Unexpected voter {}", vote.voter);
-                            voters.push(vote.voter);
-                        }
-                        Ok(vote)
-                    })
-                    .collect::<Result<Vec<_>, Error>>()?;
+                let mut unexpected = BTreeSet::new();
+                let mut voted = BTreeSet::new();
+                let mut votes = Vec::new();
+                for vote_log in vote_event.create_filter(ballot.id, None).logs(&self.web3)? {
+                    let vote = vote_event.parse_log(vote_log.into_raw())?;
+                    if voters.insert(vote.voter) {
+                        unexpected.insert(vote.voter);
+                    } else {
+                        voted.insert(vote.voter);
+                    }
+                    votes.push(vote);
+                }
+                let missed_filter =
+                    |voter: &&Address| !votes.iter().any(|vote| vote.voter == **voter);
+                let missed: BTreeSet<_> = voters.iter().filter(missed_filter).collect();
+                if !missed.is_empty() {
+                    vprintln!("  Missed: {}", HexList(&missed, Color::Red));
+                }
+                if !voted.is_empty() {
+                    vprintln!("  Voted: {}", HexList(&voted, Color::Green));
+                }
+                if !unexpected.is_empty() {
+                    vprintln!("  Unexpected: {}", HexList(&unexpected, Color::Yellow));
+                }
                 stats.add_ballot(&voters, &votes);
             } else {
                 return Err(ErrorKind::UnexpectedLogParams.into());
@@ -183,10 +181,22 @@ impl Counter {
                 }
                 Ok(key) => key,
             };
+            if mining_key.is_zero() {
+                eprintln!("Mining key for voter {} is zero. Skipping.", voter);
+                continue;
+            }
             let validator = validators_fn.call(mining_key, &*raw_call)?.into();
             stats.set_metadata(&voter, mining_key, validator);
         }
         Ok(stats)
+    }
+
+    /// Returns `true` if the block with the given number is older than `start_time`.
+    fn is_block_too_old(&self, block_num: u64) -> bool {
+        self.is_block_older_than(
+            web3::types::BlockNumber::Number(block_num),
+            &self.start_time,
+        )
     }
 
     /// Shows a warning if the node's latest block is outdated.
@@ -200,11 +210,8 @@ impl Counter {
     /// Returns `true` if the block with the given number was created before the given time.
     fn is_block_older_than(&self, number: web3::types::BlockNumber, time: &SystemTime) -> bool {
         let id = web3::types::BlockId::Number(number);
-        let block = self.web3.eth().block(id).wait().expect("get block");
-        let seconds = time
-            .duration_since(UNIX_EPOCH)
-            .expect("Current timestamp is earlier than the Unix epoch!")
-            .as_secs();
+        let block = self.web3.eth().block(id).wait().expect(ERR_BLOCK);
+        let seconds = time.duration_since(UNIX_EPOCH).expect(ERR_EPOCH).as_secs();
         block.timestamp < seconds.into()
     }
 }
