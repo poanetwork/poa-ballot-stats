@@ -1,6 +1,6 @@
 [package]
 name = "poa-ballot-stats"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 description = "Read POA voting records and rank voters by how many ballots they missed."
 
