@@ -1,6 +1,6 @@
 # POA ballot stats
 
-![logo](poa-logo.png)  [![Build Status](https://travis-ci.org/poanetwork/poa-ballot-stats.svg?branch=master)](https://travis-ci.org/poanetwork/poa-ballot-stats) 
+[![Build Status](https://travis-ci.org/poanetwork/poa-ballot-stats.svg?branch=master)](https://travis-ci.org/poanetwork/poa-ballot-stats) 
 
 POA ballot stats is a command line tool used to display voting statistics for the [POA network](https://poa.network/). 
 
@@ -11,11 +11,11 @@ Ballot tracking provides transparency for POA token holders and promotes validat
 The default display includes:
 * non-participation/associated ballots
 * missed %
-* truncated voting key
-* truncated mining key
+* validator voting key (truncated to fit screen)
+* validator mining key (truncated)
 * first name last name
 
-![Screenshot](screenshot.png)
+![Screenshot](screenshot3.png)
 
 
 ## Dependencies
@@ -32,7 +32,9 @@ $ parity --chain poa-chain-spec/spec.json --reserved-peers poa-chain-spec/bootno
 
 ### Stable Release
 
-Download the archive for your platform from the latest [release](https://github.com/poanetwork/poa-ballot-stats/releases) and unpack. Run the tool with `./poa-ballot-stats <options>`.
+Download the archive for your platform from the latest [release](https://github.com/poanetwork/poa-ballot-stats/releases) and unpack.
+
+Run the tool with `./poa-ballot-stats <options>`.
 
 #### Options
 
@@ -54,10 +56,18 @@ Download the archive for your platform from the latest [release](https://github.
 **Examples:**
 
 ```bash
+# run the application
 $ ./poa-ballot-stats
+
+# view options
 $ ./poa-ballot-stats -h
+
+# track voting on poa core network, display voting details for previous 10 weeks
 $ ./poa-ballot-stats https://core.poa.network -v -p "10 weeks"
+
+# specify the contracts/sokol.json map file and run on sokol test network with voting details
 $ ./poa-ballot-stats -c contracts/sokol.json https://sokol.poa.network -v
+
 ```
 
 ### Latest code
@@ -72,8 +82,6 @@ If you have a recent version of [Rust](https://www.rust-lang.org/), you can clon
 
 2.	`poa-ballot-stats` must run with a file matching the Parity network node. Use the contracts address file (`-c` option) that matches the network connection. Included are files for the main POA network ("core") and the POA test network ("sokol"). The Parity UI will show the current network selection in green. Make sure this is the correct network, and not the Foundation or other Ethereum network. 
 
-![Screenshot](screenshot2.png)
-
 ## Versioning
 
 We use [SemVer](http://semver.org/) for versioning. See the [project releases](https://github.com/poanetwork/poa-ballot-stats/releases/) and the [changelog](CHANGELOG.md) for historical changes.
@@ -82,8 +90,10 @@ We use [SemVer](http://semver.org/) for versioning. See the [project releases](h
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and pull request protocol.
 
-Future implementations may include the number of yes/no votes for each validator and other data points. Proposed requirements and notes on this issue are described in RFC9 [Statistics of ballots](https://github.com/poanetwork/RFC/issues/9).
+Contributors should look into [issues](https://github.com/poanetwork/poa-ballot-stats/issues) or reference RFC9 [Statistics of ballots](https://github.com/poanetwork/RFC/issues/9) for additional information.
 
 ## License
 
-This project is licensed under the GNU Lesser General Public License [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0). See the [LICENSE](LICENSE) file for details.
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+
+This project is licensed under the GNU Lesser General Public License. See the [LICENSE](LICENSE) file for details.
