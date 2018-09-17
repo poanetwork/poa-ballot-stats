@@ -25,7 +25,10 @@ use std::fs::File;
 use std::time::SystemTime;
 
 // The `use_contract!` macro triggers several Clippy warnings.
-#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments, redundant_closure, needless_update))]
+#[cfg_attr(
+    feature = "cargo-clippy",
+    allow(too_many_arguments, redundant_closure, needless_update)
+)]
 mod contracts {
     use_contract!(
         voting,

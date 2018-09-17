@@ -97,8 +97,7 @@ impl TopicFilterExt for ethabi::TopicFilter {
                 self.topic1.to_opt_vec(),
                 self.topic2.to_opt_vec(),
                 self.topic3.to_opt_vec(),
-            )
-            .from_block(web3::types::BlockNumber::Earliest)
+            ).from_block(web3::types::BlockNumber::Earliest)
             .to_block(web3::types::BlockNumber::Latest)
     }
 
