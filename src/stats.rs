@@ -1,9 +1,9 @@
 use colored::{Color, Colorize};
+use contracts::voting;
 use ethabi::Address;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use validator::Validator;
-use voting;
 
 /// The count of ballots and cast votes, as well as metadata for a particular voter.
 #[derive(Clone, Default)]

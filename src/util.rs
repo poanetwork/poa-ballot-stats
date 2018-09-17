@@ -1,10 +1,10 @@
 use colored::{Color, Colorize};
-use ethabi::{self, Address, Bytes};
+use ethabi::{self, Address, Bytes, FunctionOutputDecoder};
 use std::str::FromStr;
 use std::{fmt, u8};
 use web3;
 use web3::futures::Future;
-use web3::helpers::CallResult;
+use web3::helpers::CallFuture;
 
 // TODO: Evaluate whether any of these would make sense to include in `web3`.
 
@@ -16,25 +16,24 @@ pub fn parse_address(mut s: &str) -> Option<Address> {
     Address::from_str(s).ok()
 }
 
-/// Returns a wrapper of a contract address, to make function calls using the latest block.
-pub fn raw_call<T: web3::Transport + 'static>(
+/// Executes a function call on the latest block and returns the decoded output.
+pub fn raw_call<T: web3::Transport, D: FunctionOutputDecoder>(
     to: Address,
-    eth: web3::api::Eth<T>,
-) -> Box<Fn(Bytes) -> Result<Bytes, String>> {
-    Box::new(move |bytes: Bytes| -> Result<Bytes, String> {
-        let req = web3::types::CallRequest {
-            from: None,
-            to,
-            gas: None,
-            gas_price: None,
-            value: None,
-            data: Some(bytes.into()),
-        };
-        eth.call(req, Some(web3::types::BlockNumber::Latest))
-            .wait()
-            .map(|bytes| bytes.0)
-            .map_err(|err| err.to_string())
-    })
+    eth: &web3::api::Eth<T>,
+    (bytes, decoder): (Bytes, D),
+) -> Result<D::Output, web3::contract::Error> {
+    let req = web3::types::CallRequest {
+        from: None,
+        to,
+        gas: None,
+        gas_price: None,
+        value: None,
+        data: Some(bytes.into()),
+    };
+    let bytes = eth
+        .call(req, Some(web3::types::BlockNumber::Latest))
+        .wait()?;
+    Ok(decoder.decode(&bytes.0)?)
 }
 
 trait TopicExt<T> {
@@ -117,7 +116,7 @@ impl TopicFilterExt for ethabi::TopicFilter {
         // TODO: Once a version with https://github.com/tomusdrw/rust-web3/pull/122 is available:
         // self.transport.logs(self.to_filter_builder().build())
         let filter = web3::helpers::serialize(&self.to_filter_builder().build());
-        CallResult::new(web3.transport().execute("eth_getLogs", vec![filter])).wait()
+        CallFuture::new(web3.transport().execute("eth_getLogs", vec![filter])).wait()
     }
 }
 

@@ -30,20 +30,10 @@ use std::time::SystemTime;
     allow(too_many_arguments, redundant_closure, needless_update)
 )]
 mod contracts {
-    use_contract!(
-        voting,
-        "VotingToChangeKeys",
-        "abi/VotingToChangeKeys.abi.json"
-    );
-    use_contract!(
-        val_meta,
-        "ValidatorMetadata",
-        "abi/ValidatorMetadata.abi.json"
-    );
-    use_contract!(key_mgr, "KeysManager", "abi/KeysManager.abi.json");
+    use_contract!(voting, "abi/VotingToChangeKeys.abi.json");
+    use_contract!(val_meta, "abi/ValidatorMetadata.abi.json");
+    use_contract!(key_mgr, "abi/KeysManager.abi.json");
 }
-
-use contracts::*;
 
 fn main() {
     let matches = cli::get_matches();

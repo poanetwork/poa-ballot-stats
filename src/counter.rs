@@ -1,7 +1,9 @@
 use colored::{Color, Colorize};
-use contracts::{key_mgr, val_meta, voting};
+use contracts::key_mgr::events::voting_key_changed;
+use contracts::val_meta::functions::{get_mining_by_voting_key, validators as validators_fn};
+use contracts::voting::events::{ballot_created, vote};
 use error::{Error, ErrorKind};
-use ethabi::Address;
+use ethabi::{Address, Bytes, FunctionOutputDecoder};
 use stats::Stats;
 use std::collections::BTreeSet;
 use std::default::Default;
@@ -84,18 +86,10 @@ impl Counter {
         // Calls `println!` if `verbose` is `true`.
         macro_rules! vprintln { ($($arg:tt)*) => { if self.verbose { println!($($arg)*); } } }
 
-        let voting_contract = voting::VotingToChangeKeys::default();
-        let val_meta_contract = val_meta::ValidatorMetadata::default();
-        let key_mgr_contract = key_mgr::KeysManager::default();
-
-        let ballot_event = voting_contract.events().ballot_created();
-        let vote_event = voting_contract.events().vote();
-        let change_event = key_mgr_contract.events().voting_key_changed();
-
         // Find all ballots and voter changes. We don't filter by contract address, so we can make
         // a single pass. Contract addresses are checked inside the loop.
         let ballot_or_change_filter =
-            (ballot_event.create_filter(None, None, None)).or(change_event.create_filter(None));
+            (ballot_created::filter(None, None, None)).or(voting_key_changed::filter(None));
 
         let mut voters: BTreeSet<Address> = BTreeSet::new();
         let mut stats = Stats::default();
@@ -107,7 +101,7 @@ impl Counter {
         for log in ballot_or_change_filter.logs(&self.web3)? {
             event_found = true;
             let block_num = log.block_number.expect(ERR_BLOCK_NUM).into();
-            if let Ok(change) = change_event.parse_log(log.clone().into_raw()) {
+            if let Ok(change) = voting_key_changed::parse_log(log.clone().into_raw()) {
                 if log.address != self.key_mgr_addr {
                     continue; // Event from another contract instance.
                 }
@@ -122,7 +116,7 @@ impl Counter {
                     }
                     _ => vprintln!("  Unexpected key change action."),
                 }
-            } else if let Ok(ballot) = ballot_event.parse_log(log.clone().into_raw()) {
+            } else if let Ok(ballot) = ballot_created::parse_log(log.clone().into_raw()) {
                 if log.address != self.voting_addr {
                     continue; // Event from another contract instance.
                 }
@@ -136,8 +130,8 @@ impl Counter {
                 let mut unexpected = BTreeSet::new();
                 let mut voted = BTreeSet::new();
                 let mut votes = Vec::new();
-                for vote_log in vote_event.create_filter(ballot.id, None).logs(&self.web3)? {
-                    let vote = vote_event.parse_log(vote_log.into_raw())?;
+                for vote_log in vote::filter(ballot.id, None).logs(&self.web3)? {
+                    let vote = vote::parse_log(vote_log.into_raw())?;
                     if voters.insert(vote.voter) {
                         unexpected.insert(vote.voter);
                     } else {
@@ -170,11 +164,8 @@ impl Counter {
         vprintln!(""); // Add a new line between event log and table.
 
         // Finally, gather the metadata for all voters.
-        let raw_call = util::raw_call(self.val_meta_addr, self.web3.eth());
-        let get_mining_by_voting_key_fn = val_meta_contract.functions().get_mining_by_voting_key();
-        let validators_fn = val_meta_contract.functions().validators();
         for voter in voters {
-            let mining_key = match get_mining_by_voting_key_fn.call(voter, &*raw_call) {
+            let mining_key = match self.call_val_meta(get_mining_by_voting_key::call(voter)) {
                 Err(err) => {
                     eprintln!("Failed to find mining key for voter {}: {:?}", voter, err);
                     continue;
@@ -185,10 +176,18 @@ impl Counter {
                 eprintln!("Mining key for voter {} is zero. Skipping.", voter);
                 continue;
             }
-            let validator = validators_fn.call(mining_key, &*raw_call)?.into();
+            let validator = self.call_val_meta(validators_fn::call(mining_key))?.into();
             stats.set_metadata(&voter, mining_key, validator);
         }
         Ok(stats)
+    }
+
+    /// Calls a function of the `ValidatorMetadata` contract and returns the decoded result.
+    fn call_val_meta<D>(&self, fn_call: (Bytes, D)) -> Result<D::Output, web3::contract::Error>
+    where
+        D: FunctionOutputDecoder,
+    {
+        util::raw_call(self.val_meta_addr, &self.web3.eth(), fn_call)
     }
 
     /// Returns `true` if the block with the given number is older than `start_time`.
@@ -210,7 +209,8 @@ impl Counter {
     /// Returns `true` if the block with the given number was created before the given time.
     fn is_block_older_than(&self, number: web3::types::BlockNumber, time: &SystemTime) -> bool {
         let id = web3::types::BlockId::Number(number);
-        let block = self.web3.eth().block(id).wait().expect(ERR_BLOCK);
+        let block_result = self.web3.eth().block(id).wait();
+        let block = block_result.expect(ERR_BLOCK).expect(ERR_BLOCK);
         let seconds = time.duration_since(UNIX_EPOCH).expect(ERR_EPOCH).as_secs();
         block.timestamp < seconds.into()
     }
