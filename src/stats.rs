@@ -1,5 +1,4 @@
 use colored::{Color, Colorize};
-use contracts::voting;
 use ethabi::Address;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -27,7 +26,7 @@ pub struct Stats {
 impl Stats {
     /// Adds a ballot: `voters` are the voting keys of everyone who was allowed to cast a vote, and
     /// `votes` are the ones that were actually cast.
-    pub fn add_ballot<'a, I>(&mut self, voters: I, votes: &[voting::logs::Vote])
+    pub fn add_ballot<'a, I>(&mut self, voters: I, voted: &[Address])
     where
         I: IntoIterator<Item = &'a Address>,
     {
@@ -37,7 +36,7 @@ impl Stats {
                 .entry(voter.clone())
                 .or_insert_with(VoterStats::default);
             vs.ballots += 1;
-            if votes.iter().any(|vote| vote.voter == *voter) {
+            if voted.contains(voter) {
                 vs.voted += 1;
             }
         }
@@ -116,7 +115,7 @@ struct DisplayLine {
 impl Display for DisplayLine {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let text = format!(
-            "{:>7}, {:4.1}%  {}  {}  {}",
+            "{:>7},{:5.1}%  {}  {}  {}",
             format!("{}/{}", self.ballots - self.voted, self.ballots),
             100.0 - (self.votes_per_thousand as f32) / 10.0,
             self.voting_address,

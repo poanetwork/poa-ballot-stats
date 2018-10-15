@@ -1,20 +1,13 @@
 use colored::{Color, Colorize};
+use contracts::v1::voting::logs::BallotCreated as BallotCreatedV1;
+use contracts::v2::voting::logs::BallotCreated;
 use ethabi::{self, Address, Bytes, FunctionOutputDecoder};
-use std::str::FromStr;
 use std::{fmt, u8};
 use web3;
 use web3::futures::Future;
 use web3::helpers::CallFuture;
 
 // TODO: Evaluate whether any of these would make sense to include in `web3`.
-
-/// Parses the string as a 40-digit hexadecimal number, and returns the corresponding `Address`.
-pub fn parse_address(mut s: &str) -> Option<Address> {
-    if &s[..2] == "0x" {
-        s = &s[2..];
-    }
-    Address::from_str(s).ok()
-}
 
 /// Executes a function call on the latest block and returns the decoded output.
 pub fn raw_call<T: web3::Transport, D: FunctionOutputDecoder>(
@@ -167,14 +160,18 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_parse_address() {
-        let addr_str = "0x2b1dbc7390a65dc40f7d64d67ea11b4d627dd1bf";
-        let addr = super::parse_address(addr_str).expect("parse address with 0x");
-        let addr2 = super::parse_address(&addr_str[2..]).expect("parse address without 0x");
-        assert_eq!(addr, addr2);
-        assert_eq!(addr_str, &format!("{:?}", addr));
+/// Conversion into a `BallotCreated` event.
+pub trait IntoBallot {
+    /// Converts a `BallotCreated` event from earlier contract types into the current one.
+    fn into(self) -> BallotCreated;
+}
+
+impl IntoBallot for BallotCreatedV1 {
+    fn into(self) -> BallotCreated {
+        BallotCreated {
+            id: self.id,
+            ballot_type: self.ballot_type,
+            creator: self.creator,
+        }
     }
 }

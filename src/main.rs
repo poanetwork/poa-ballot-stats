@@ -15,6 +15,7 @@ extern crate serde_json;
 extern crate web3;
 
 mod cli;
+mod contracts;
 mod counter;
 mod error;
 mod stats;
@@ -23,17 +24,6 @@ mod validator;
 
 use std::fs::File;
 use std::time::SystemTime;
-
-// The `use_contract!` macro triggers several Clippy warnings.
-#[cfg_attr(
-    feature = "cargo-clippy",
-    allow(too_many_arguments, redundant_closure, needless_update)
-)]
-mod contracts {
-    use_contract!(voting, "abi/VotingToChangeKeys.abi.json");
-    use_contract!(val_meta, "abi/ValidatorMetadata.abi.json");
-    use_contract!(key_mgr, "abi/KeysManager.abi.json");
-}
 
 fn main() {
     let matches = cli::get_matches();
@@ -45,7 +35,7 @@ fn main() {
     let file = File::open(contract_file).expect("open contracts file");
     let contract_addrs = serde_json::from_reader(file).expect("parse contracts file");
 
-    let mut counter = counter::Counter::new(url, &contract_addrs);
+    let mut counter = counter::Counter::new(url, contract_addrs);
 
     if matches.is_present("verbose") {
         counter.set_verbose();
