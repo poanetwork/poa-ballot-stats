@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to the project will be documented in this file.
 
+## [0.4.0] - 2018-10-15
+
+- Support new contracts (hard fork 2).
+
+
 ## [0.3.0] - 2018-05-29
 ### Added
 - --b flag to specify a block integer. This option displays records starting with a block number.
@@ -46,6 +51,7 @@ All notable changes to the project will be documented in this file.
 - Updated dependencies including Rust and Clippy
 
 
+[0.4.0]: https://github.com/poanetwork/poa-ballot-stats/releases/tag/0.4.0
 [0.3.0]: https://github.com/poanetwork/poa-ballot-stats/releases/tag/0.3.0
 [0.2.1]: https://github.com/poanetwork/poa-ballot-stats/releases/tag/0.2.1
 [0.2.0]: https://github.com/poanetwork/poa-ballot-stats/releases/tag/0.2.0
