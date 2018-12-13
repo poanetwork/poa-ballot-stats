@@ -1,18 +1,9 @@
-extern crate clap;
-extern crate colored;
 #[macro_use]
 extern crate error_chain;
-extern crate ethabi;
-#[macro_use(EthabiContract)]
-extern crate ethabi_derive;
 #[macro_use(use_contract)]
 extern crate ethabi_contract;
-extern crate parse_duration;
-extern crate serde;
-#[macro_use(Deserialize)]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate web3;
+#[macro_use(EthabiContract)]
+extern crate ethabi_derive;
 
 mod cli;
 mod contracts;

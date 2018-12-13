@@ -3,17 +3,17 @@ name = "poa-ballot-stats"
 version = "0.4.0"
 authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 description = "Read POA voting records and rank voters by how many ballots they missed."
+edition = "2018"
 
 [dependencies]
 clap = "2.31.2"
 colored = "1.6.0"
 error-chain = { version = "0.12", default-features = false }
-ethabi = "6.0.1"
+ethabi = "6.1.0"
 ethabi-contract = "6.0.0"
 ethabi-derive = "6.0.2"
 parse_duration = "1.0.1"
-serde = "1.0.36"
-serde_derive = "1.0.36"
-serde_json = "1.0.13"
-# TODO: Remove ws once https://github.com/tomusdrw/rust-web3/issues/157 is fixed.
-web3 = { version = "0.4.0", default-features = false, features = ["http", "tls", "ws"] }
+serde = "1.0.82"
+serde_derive = "1.0.82"
+serde_json = "1.0.33"
+web3 = { version = "0.5.1", default-features = false, features = ["http", "tls"] }

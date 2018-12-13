@@ -5,7 +5,7 @@ dist: trusty
 language: rust
 services: docker
 sudo: required
-rust: 1.29.0
+rust: 1.31.0
 cache: cargo
 
 env:

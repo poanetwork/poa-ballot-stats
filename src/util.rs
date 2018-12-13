@@ -1,6 +1,6 @@
+use crate::contracts::v1::voting::logs::BallotCreated as BallotCreatedV1;
+use crate::contracts::v2::voting::logs::BallotCreated;
 use colored::{Color, Colorize};
-use contracts::v1::voting::logs::BallotCreated as BallotCreatedV1;
-use contracts::v2::voting::logs::BallotCreated;
 use ethabi::{self, Address, Bytes, FunctionOutputDecoder};
 use std::{fmt, u8};
 use web3;
@@ -89,7 +89,8 @@ impl TopicFilterExt for ethabi::TopicFilter {
                 self.topic1.to_opt_vec(),
                 self.topic2.to_opt_vec(),
                 self.topic3.to_opt_vec(),
-            ).from_block(web3::types::BlockNumber::Earliest)
+            )
+            .from_block(web3::types::BlockNumber::Earliest)
             .to_block(web3::types::BlockNumber::Latest)
     }
 

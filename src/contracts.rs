@@ -1,9 +1,11 @@
 use ethabi::Address;
+use serde_derive::Deserialize;
 
 // The `use_contract!` macro triggers several Clippy warnings.
-#[cfg_attr(
-    feature = "cargo-clippy",
-    allow(too_many_arguments, redundant_closure, needless_update)
+#[allow(
+    clippy::too_many_arguments,
+    clippy::redundant_closure,
+    clippy::needless_update
 )]
 pub mod v2 {
     use_contract!(key_mgr, "abi/v2/KeysManager.abi.json");
@@ -12,10 +14,7 @@ pub mod v2 {
 }
 
 // The `use_contract!` macro triggers several Clippy warnings.
-#[cfg_attr(
-    feature = "cargo-clippy",
-    allow(too_many_arguments, redundant_closure, needless_update)
-)]
+#[allow(clippy::redundant_closure, clippy::needless_update)]
 pub mod v1 {
     use_contract!(voting, "abi/v1/VotingToChangeKeys.abi.json");
 }

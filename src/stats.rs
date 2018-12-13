@@ -1,8 +1,8 @@
+use crate::validator::Validator;
 use colored::{Color, Colorize};
 use ethabi::Address;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
-use validator::Validator;
 
 /// The count of ballots and cast votes, as well as metadata for a particular voter.
 #[derive(Clone, Default)]

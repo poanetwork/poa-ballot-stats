@@ -15,29 +15,34 @@ pub fn get_matches() -> ArgMatches<'static> {
                 .value_name("URL")
                 .help("The JSON-RPC endpoint")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("verbose")
                 .short("v")
                 .long("verbose")
                 .help("More detailed output")
                 .takes_value(false),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("contracts")
                 .short("c")
                 .long("contracts")
                 .help("JSON file with the contract addresses")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("period")
                 .short("p")
                 .long("period")
                 .help("The period in which votes should be counted, e.g. '5 days', '2 months'.")
                 .takes_value(true),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("block")
                 .short("b")
                 .long("block")
                 .help("The earliest block in which votes should be counted.")
                 .takes_value(true),
-        ).get_matches()
+        )
+        .get_matches()
 }

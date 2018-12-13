@@ -1,17 +1,17 @@
+use crate::contracts::v1::voting::events::{ballot_created as ballot_created_v1, vote as vote_v1};
+use crate::contracts::v2::key_mgr::events::voting_key_changed;
+use crate::contracts::v2::key_mgr::functions::get_mining_key_by_voting;
+use crate::contracts::v2::val_meta::functions::validators as validators_fn;
+use crate::contracts::v2::voting::events::{ballot_created, vote};
+use crate::contracts::ContractAddresses;
+use crate::error::{Error, ErrorKind};
+use crate::stats::Stats;
+use crate::util::{self, HexList, IntoBallot, TopicFilterExt, Web3LogExt};
 use colored::{Color, Colorize};
-use contracts::v1::voting::events::{ballot_created as ballot_created_v1, vote as vote_v1};
-use contracts::v2::key_mgr::events::voting_key_changed;
-use contracts::v2::key_mgr::functions::get_mining_key_by_voting;
-use contracts::v2::val_meta::functions::validators as validators_fn;
-use contracts::v2::voting::events::{ballot_created, vote};
-use contracts::ContractAddresses;
-use error::{Error, ErrorKind};
 use ethabi::{Address, Bytes, FunctionOutputDecoder, Uint};
-use stats::Stats;
 use std::collections::BTreeSet;
 use std::default::Default;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use util::{self, HexList, IntoBallot, TopicFilterExt, Web3LogExt};
 use web3;
 use web3::futures::Future;
 
@@ -104,7 +104,8 @@ impl Counter {
             } else if let Ok(ballot) =
                 ballot_created::parse_log(log.clone().into_raw()).or_else(|_| {
                     ballot_created_v1::parse_log(log.clone().into_raw()).map(IntoBallot::into)
-                }) {
+                })
+            {
                 if !self.addrs.is_voting(&log.address) {
                     continue; // Event from another contract instance.
                 }
@@ -207,7 +208,8 @@ impl Counter {
                     .map(|vote| vote.voter)
                     .or_else(|_| vote_v1::parse_log(vote_log.into_raw()).map(|vote| vote.voter))
                     .map_err(Error::from)
-            }).collect()
+            })
+            .collect()
     }
 
     /// Returns `true` if the block with the given number is older than `start_time`.
