@@ -43,20 +43,10 @@ impl Stats {
     }
 
     /// Inserts metadata about a voter: the mining key and the `Validator` information.
-    pub fn set_metadata(
-        &mut self,
-        voter: &Address,
-        mining_key: Address,
-        validator: Validator,
-    ) -> bool {
-        match self.voter_stats.get_mut(voter) {
-            None => false,
-            Some(vs) => {
-                vs.validator = Some(validator);
-                vs.mining_key = Some(mining_key);
-                true
-            }
-        }
+    pub fn set_metadata(&mut self, voter: &Address, mining_key: Address, validator: Validator) {
+        let vs = self.voter_stats.entry(*voter).or_default();
+        vs.validator = Some(validator);
+        vs.mining_key = Some(mining_key);
     }
 }
 

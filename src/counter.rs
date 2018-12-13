@@ -1,6 +1,10 @@
 use crate::contracts::v1::voting::events::{ballot_created as ballot_created_v1, vote as vote_v1};
+use crate::contracts::v2::consensus::functions::get_validators as get_validators_fn;
 use crate::contracts::v2::key_mgr::events::voting_key_changed;
-use crate::contracts::v2::key_mgr::functions::get_mining_key_by_voting;
+use crate::contracts::v2::key_mgr::functions::{
+    get_mining_key_by_voting as get_mining_key_by_voting_fn,
+    get_voting_by_mining as get_voting_by_mining_fn,
+};
 use crate::contracts::v2::val_meta::functions::validators as validators_fn;
 use crate::contracts::v2::voting::events::{ballot_created, vote};
 use crate::contracts::ContractAddresses;
@@ -132,11 +136,22 @@ impl Counter {
             return Err(ErrorKind::NoEventsFound.into());
         }
 
+        // Add all voters we haven't encountered so far.
+        let mining_keys: Vec<Address> = self.call_poa(get_validators_fn::call())?;
+        for mining_key in mining_keys {
+            let voter = self.call_key_mgr(get_voting_by_mining_fn::call(mining_key))?;
+            if voter.is_zero() {
+                vprintln!("Voting key for {} is zero. Skipping.", mining_key);
+            } else if voters.insert(voter) {
+                eprintln!("Unexpected voter {} (mining key {})", voter, mining_key);
+            }
+        }
+
         vprintln!(""); // Add a new line between event log and table.
 
         // Finally, gather the metadata for all voters.
         for voter in voters {
-            let mining_key = match self.call_key_mgr(get_mining_key_by_voting::call(voter)) {
+            let mining_key = match self.call_key_mgr(get_mining_key_by_voting_fn::call(voter)) {
                 Err(err) => {
                     eprintln!("Failed to find mining key for voter {}: {:?}", voter, err);
                     continue;
@@ -194,6 +209,14 @@ impl Counter {
             &self.web3.eth(),
             fn_call,
         )
+    }
+
+    /// Calls a function of the `PoaNetworkConsensus` contract and returns the decoded result.
+    fn call_poa<D>(&self, fn_call: (Bytes, D)) -> Result<D::Output, web3::contract::Error>
+    where
+        D: FunctionOutputDecoder,
+    {
+        util::raw_call(self.addrs.v2.poa_address, &self.web3.eth(), fn_call)
     }
 
     fn voters_for_ballot(&self, id: Uint) -> Result<Vec<Address>, Error> {

@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to the project will be documented in this file.
 
+
+## Unreleased
+
+- Migrate to Rust 2018. At least version 1.31.0 required.
+- Show new validators in the list, even if there was no ballot since they were added.
+
+
 ## [0.4.0] - 2018-10-15
 
 - Support new contracts (hard fork 2).

@@ -11,6 +11,7 @@ pub mod v2 {
     use_contract!(key_mgr, "abi/v2/KeysManager.abi.json");
     use_contract!(val_meta, "abi/v2/ValidatorMetadata.abi.json");
     use_contract!(voting, "abi/v2/VotingToChangeKeys.abi.json");
+    use_contract!(consensus, "abi/v2/PoaNetworkConsensus.abi.json");
 }
 
 // The `use_contract!` macro triggers several Clippy warnings.
@@ -25,6 +26,7 @@ pub struct ContractV1V2Addresses {
     pub metadata_address: Address,
     pub keys_manager_address: Address,
     pub voting_to_change_keys_address: Address,
+    pub poa_address: Address,
 }
 
 #[derive(Deserialize)]
