@@ -8,6 +8,8 @@ use serde_derive::Deserialize;
     clippy::needless_update
 )]
 pub mod v2 {
+    use ethabi_contract::use_contract;
+
     use_contract!(key_mgr, "abi/v2/KeysManager.abi.json");
     use_contract!(val_meta, "abi/v2/ValidatorMetadata.abi.json");
     use_contract!(voting, "abi/v2/VotingToChangeKeys.abi.json");
@@ -17,6 +19,8 @@ pub mod v2 {
 // The `use_contract!` macro triggers several Clippy warnings.
 #[allow(clippy::redundant_closure, clippy::needless_update)]
 pub mod v1 {
+    use ethabi_contract::use_contract;
+
     use_contract!(voting, "abi/v1/VotingToChangeKeys.abi.json");
 }
 
